@@ -1,0 +1,22 @@
+{
+  "name": "ffxiv-pvp-inhouse-bot",
+  "version": "1.0.0",
+  "description": "A Final Fantasy XIV PvP in-house league bot",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meastoso/ffxiv-pvp-inhouse-bot.git"
+  },
+  "author": "meastoso",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/meastoso/ffxiv-pvp-inhouse-bot/issues"
+  },
+  "homepage": "https://github.com/meastoso/ffxiv-pvp-inhouse-bot#readme",
+  "dependencies": {
+    "discord.js": "^11.2.1"
+  }
+}
