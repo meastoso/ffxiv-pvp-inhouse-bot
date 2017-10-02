@@ -1,6 +1,8 @@
 const Discord = require('discord.js');
 const client = new Discord.Client();
-const userMembership = require('./users/UserMembership.js'); // REMOVE AFTER CREATION IS DONE
+const userMembership = require('./users/UserMembership.js'); 
+const userStats = require('./users/UserStats.js');
+const auditRecordsDAO = require('./dynamo/AuditRecordsDAO.js');
 
 client.on('ready', () => {
   console.log('I am ready!');
