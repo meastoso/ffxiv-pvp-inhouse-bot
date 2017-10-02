@@ -3,10 +3,21 @@ const client = new Discord.Client();
 const userMembership = require('./users/UserMembership.js'); 
 const userStats = require('./users/UserStats.js');
 const auditRecordsDAO = require('./dynamo/AuditRecordsDAO.js');
+const botConfig = require('./s3/BotConfig.js');
 
 client.on('ready', () => {
   console.log('I am ready!');
 });
+
+/**
+ * Current TODO LIST:
+ * 
+ * 	- Implement super-admin commands
+ * 		- !setgraceperiod <days>
+ * 		- !vouchapproval <on|off>
+ * 		- figure out how to cronjob nodejs
+ */
+
 
 /*
  * message.author.username = 'meastoso'
@@ -38,6 +49,35 @@ client.on('message', message => {
 				});*/
 			
 			message.reply('I AM LOOKING FOR GIRLFRIEND');
+		}
+		if (message.content.startsWith('!setgraceperiod ')) {
+			console.log('setting grace period command');
+			// first check if user is authorized (superadmin)
+			// second check if they provided a valid integer for graceperiod
+			// go and set grace period configuration using BotConfig.setNewPlayerGracePeriod(days);
+			const newPeriod = 14;
+			botConfig.setNewPlayerGracePeriod(newPeriod)
+				.then((retObj) => {
+					message.reply('Updated New Player Grace Period to: ' + newPeriod);
+				})
+				.catch((err) => {
+					message.reply('ERROR! ' + JSON.stringify(err));
+				});
+		}
+		if (message.content.startsWith('!vouchapproval ')) {
+			console.log('setting vouchapproval command');
+			// first check if user is authorized (superadmin)
+			// second check if they provided "on" or "off"
+			// go and set vouchapproval configuration using BotConfig.setVouchApproval(days);
+			const arg = "on"; // parse here
+			const isVouchApprovalRequired = true;
+			botConfig.setVouchApproval(isVouchApprovalRequired)
+				.then((retObj) => {
+					message.reply('Updated bot configuration for requiring admin approval after vouches to: ' + arg);
+				})
+				.catch((err) => {
+					message.reply('ERROR! ' + JSON.stringify(err));
+				});
 		}
 	}
 });
