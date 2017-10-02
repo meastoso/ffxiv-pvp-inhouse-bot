@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/meastoso/ffxiv-pvp-inhouse-bot#readme",
   "dependencies": {
-    "discord.js": "^11.2.1"
+    "discord.js": "^11.2.1",
+    "aws-sdk": "2.121.0"
   }
 }
