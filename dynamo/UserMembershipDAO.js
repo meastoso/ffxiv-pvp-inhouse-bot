@@ -157,11 +157,78 @@ const updateVouchedApproved = function(user_id, vouchedBool, approvedBool, vouch
 	});
 }
 
+// TODO: javadocs
+const updateUserBan = function(user_id, banBool) {
+	return new Promise((resolve, reject) => {
+		// Update the item, unconditionally,
+		const banned = +banBool;
+		var params = {
+		    TableName:table,
+		    Key:{
+		        "user_id": user_id
+		    },
+		    UpdateExpression: "set banned = :b",
+		    ExpressionAttributeValues:{
+		        ":b":banned
+		    },
+		    ReturnValues:"UPDATED_NEW"
+		};
+	
+		console.log("UserMembership DAO - Updating user " + user_id + " with banned: " + banned);
+		docClient.update(params, function(err, data) {
+		    if (err) {
+		        console.error("Unable to update item. Error JSON:", JSON.stringify(err, null, 2));
+		        reject(err);
+		    } else {
+		        console.log("UpdateItem succeeded:", JSON.stringify(data, null, 2));
+		        resolve(data);
+		    }
+		});
+	});
+}
+
+// TODO: javadocs
+const updateUserApproved = function(authorTag, user_id, user_role, approvedBool) {
+	return new Promise((resolve, reject) => {
+		// Update the item, unconditionally,
+		const approved = +approvedBool;
+		const approvers = authorTag;
+		const approval_date = (new Date()).toISOString();
+		var params = {
+		    TableName:table,
+		    Key:{
+		        "user_id": user_id
+		    },
+		    UpdateExpression: "set user_role = :r, approved = :a, approvers = :as, approval_date = :ad",
+		    ExpressionAttributeValues:{
+		    	":r":user_role,
+		        ":a":approved,
+		        ":as":approvers,
+		        ":ad":approval_date
+		    },
+		    ReturnValues:"UPDATED_NEW"
+		};
+	
+		console.log("UserMembership DAO - Updating user " + user_id + " with approved: " + approved);
+		docClient.update(params, function(err, data) {
+		    if (err) {
+		        console.error("Unable to update item. Error JSON:", JSON.stringify(err, null, 2));
+		        reject(err);
+		    } else {
+		        console.log("UpdateItem succeeded:", JSON.stringify(data, null, 2));
+		        resolve(data);
+		    }
+		});
+	});
+}
+
 // expose public methods
 module.exports = {
 		createNewUser: createNewUser,
 		getUser: getUser,
 		getAllUsers: getAllUser,
 		updateUserRole: updateUserRole,
-		updateVouchedApproved: updateVouchedApproved
+		updateVouchedApproved: updateVouchedApproved,
+		updateUserBan: updateUserBan,
+		updateUserApproved: updateUserApproved
 }

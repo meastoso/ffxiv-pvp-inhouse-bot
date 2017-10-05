@@ -32,7 +32,7 @@ const isAuthorized = function(author, requiredRole) {
 	if (author.tag == 'meastoso#3957') return true; // Need this for testing
 	const userObj = getUser(author.tag);
 	if (userObj !== undefined && userObj !== null) {
-		//userRole = userObj.user_role;
+		if (userObj.banned == 1) return false;
 		if (requiredRole == 'superadmin') {
 			const acceptableRoles = ['superadmin'];
 			if (acceptableRoles.includes(userObj.user_role)) {
@@ -143,6 +143,60 @@ const finalizeVouch = function(vouchTargetObj, voucherName) {
 	});
 }
 
+// Get the number (integer) of users that have approved = 1
+const getApprovedUserCount = function() {
+	let count = 0;
+	for (let user_id in userMembershipCache) {
+		if (userMembershipCache[user_id].approved == 1) count++;
+	}
+	return count;
+}
+
+// Ban the user
+const banUser = function(username) {
+	return new Promise((resolve, reject) => {
+		const banned = true;
+		userMembershipDAO.updateUserBan(username, banned)
+			.then((data) => {
+				userMembershipCache[username].banned = 1;
+				resolve(data);
+			})
+			.catch((err) => {
+				reject(err);
+			});
+	});
+}
+
+// Get all usernames for users who have vouched = 1 but approval = 0
+const getApprovals = function() {
+	let userNeedingApproval = [];
+	for (let user_id in userMembershipCache) {
+		if (userMembershipCache[user_id].vouched == 1 && userMembershipCache[user_id].approved == 0) {
+			userNeedingApproval.push(user_id);
+		}
+	}
+	return userNeedingApproval;
+}
+
+// Sets approved = 1 for specified user
+const approveUser = function(authorTag, username) {
+	return new Promise((resolve, reject) => {
+		const approved = true;
+		const user_role = 'user';
+		userMembershipDAO.updateUserApproved(authorTag, username, user_role, approved)
+			.then((data) => {
+				userMembershipCache[username].approved = data.Attributes.approved;
+				userMembershipCache[username].approvers = data.Attributes.approvers;
+				userMembershipCache[username].user_role = data.Attributes.user_role;
+				userMembershipCache[username].approval_date = data.Attributes.approval_date;
+				resolve(data);
+			})
+			.catch((err) => {
+				reject(err);
+			});
+	});
+}
+
 // Returns true if user exists in the cache
 const isUser = function(authorTag) {
 	return userMembershipCache[authorTag] != null;
@@ -163,6 +217,11 @@ const isUserAdmin = function(authorTag) {
 	return u != null && (u.user_role == 'admin' || u.user_role == 'superadmin');
 }
 
+const needsApproval = function(username) {
+	const u = userMembershipCache[username];
+	return u != null && u.approved == 0 && u.vouched == 1;
+}
+
 module.exports = {
 		isAuthorized: isAuthorized,
 		getUser: getUser,
@@ -172,5 +231,10 @@ module.exports = {
 		isUserAdmin: isUserAdmin,
 		setUserRole: setUserRole,
 		createNewUser: createNewUser,
-		finalizeVouch: finalizeVouch
+		finalizeVouch: finalizeVouch,
+		getApprovedUserCount: getApprovedUserCount,
+		banUser: banUser,
+		getApprovals: getApprovals,
+		approveUser: approveUser,
+		needsApproval: needsApproval
 }

@@ -18,14 +18,21 @@ client.on('ready', () => {
  * Current TODO LIST:
  * 
  * 	- Implement remaining non-queue/matchmaking commands
- * 		- (done) !addrole <user> <role>
- * 		- (done) !vouch <user>
- * 		- !approvals
- * 		- !approve user
- * 		- !role <user>
- * 		- !ban <user> <reason>
- * 		- !count
- * 		- (almost-done - needs stats for superadmin) !data <user>
+ * 		- !data <user> (INCLUDE STATS FOR SUPERADMINS)
+ * 		- !queueinfo
+ * 		- !move <user> <pos>
+ * 		- !remove <user>
+ * 		- !clear
+ * 		- !timeout <user> <min>
+ * 
+ * 			** ALL USER COMMANDS HERE: **
+ * 		- !showqueue
+ * 		- !lose / !win
+ * 		- !leave
+ * 		- !joinspec
+ * 		- !joinrandom
+ * 		- !join
+ * 		- !stats
  */
 
 // Helper function to reply when someone is unauthorized
@@ -255,6 +262,125 @@ client.on('message', message => {
 					.catch((err) => {
 						console.log(err);
 					});
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "data");
+			}
+		}
+		/*#########################################
+		 *      !count
+		 #########################################*/
+		if (message.content.startsWith('!count')) {
+			if (userMembership.isAuthorized(message.author, 'admin')) {
+				message.reply("WHOA! There's " + userMembership.getApprovedUserCount() + " vouched and approved users in the KISADA inhouse league!");
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "count");
+			}
+		}
+		/*#########################################
+		 *      !approvals
+		 #########################################*/
+		if (message.content.startsWith('!approvals')) {
+			if (userMembership.isAuthorized(message.author, 'admin')) {
+				const approvalsStr = userMembership.getApprovals().join(', ');
+				if (approvalsStr.length < 1 || approvalsStr == '') {
+					message.reply("there are no users requiring approval at this time.");
+				}
+				else {
+					message.reply("the following users require admin approval: " + approvalsStr);
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "approvals");
+			}
+		}
+		/*#########################################
+		 *      !approve <user>
+		 #########################################*/
+		if (message.content.startsWith('!approve ')) {
+			if (userMembership.isAuthorized(message.author, 'admin')) {
+				try {
+					const username = message.content.split('!approve ')[1];
+					if (userMembership.isUser(username)) {
+						if (userMembership.needsApproval(username)) {
+							userMembership.approveUser(message.author.tag, username)
+								.then((data) => {
+									message.reply("user " + username + " has been approved!");
+								})
+								.catch((err) => {
+									logger.log("ERROR", "Error trying to approve user " + username + ", exception:", err);
+									message.reply('Failed to approve user ' + username + '. Please contact meastoso with the timestamp of this message.');
+								});
+						}
+						else {
+							message.reply(username + ' does not require approval at this time.');
+						}
+					}
+					else {
+						message.reply(username + ' is not a valid user.');
+					}
+				}
+				catch(err) {
+					logger.log("ERROR", "Error trying to get users role, exception:", err);
+					replyInvalidUsage(message);
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "approve");
+			}
+		}
+		/*#########################################
+		 *      !role <user>
+		 #########################################*/
+		if (message.content.startsWith('!role ')) {
+			if (userMembership.isAuthorized(message.author, 'user')) {
+				try {
+					const username = message.content.split('!role ')[1];
+					if (userMembership.isUser(username)) {
+						const userObj = userMembership.getUser(username);
+						const user_role = userObj.user_role;
+						message.reply(username + ' has the role ' + user_role);
+					}
+					else {
+						message.reply(username + ' is not a valid user.');
+					}
+				}
+				catch(err) {
+					logger.log("ERROR", "Error trying to get users role, exception:", err);
+					replyInvalidUsage(message);
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "role");
+			}
+		}
+		/*#########################################
+		 *      !ban <user> <reason>
+		 #########################################*/
+		if (message.content.startsWith('!ban ')) {
+			if (userMembership.isAuthorized(message.author, 'user')) {
+				try {
+					const username = message.content.split('!ban ')[1];
+					userMembership.banUser(username)
+						.then((data) => {
+							message.reply("User " + username + " has been banned from KIHL.");
+							// TODO: add entry to audit system
+						})
+						.catch((err) => {
+							logger.log("ERROR", "Error trying to format user data, exception:", err);
+							replyInvalidUsage(message);
+						});
+				}
+				catch(err) {
+					logger.log("ERROR", "Error trying to format user data, exception:", err);
+					replyInvalidUsage(message);
+				}
 			}
 			else {
 				replyUnauthorized(message, requiredRole);
