@@ -15,14 +15,33 @@ function replyUnauthorized(message, requiredRole) {
 }
 
 // called from !join and !testjoin
-const joinCommand = function(message, authorTag, classArg) {
+const joinCommand = function(message, authorTag, userDiscordId, classArg, discordClient) {
 	const requiredRole = 'user';
 	if (userMembership.isAuthorized(authorTag, requiredRole)) {
 		console.log('called joinCommand for authorTag: ' + authorTag + ' and classArg: ' + classArg);
 		const userName = authorTag;
 		const discordChannelName = message.channel.name;
 		const matchRole = classEnum[classArg];
-		queueManager.addPlayerToQueue(userName, discordChannelName, matchRole);
+		if (queueManager.isPlayerInQueue(userName, discordChannelName)) {
+			message.reply('user ' + userName + ' already exists in the queue, please !leave first before joining again');
+		}
+		else {
+			queueManager.addPlayerToQueue(userName, userDiscordId, discordChannelName, matchRole)
+				.then((data) => {
+					message.reply('successfully added user ' + userName + ' to queue.');
+					// check if we can make a match
+					const matchObj = queueManager.checkForMatch(discordChannelName);
+					if (matchObj != null) {
+						// WE HAVE A MATCH!
+						queueManager.startMatch(matchObj, discordClient);
+					}
+					queueManager.testStartMatch(discordClient); // REMOVE THIS LATER
+				})
+				.catch((err) => {
+					logger.log('ERROR', 'Failed to add player to queue, exception:', err);
+					message.reply('ERROR: Failed to add player to queue. Please report to admin with timestamp.');
+				});
+		}
 	}
 	else {
 		replyUnauthorized(message, requiredRole);

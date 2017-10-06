@@ -6,6 +6,7 @@ const auditRecordsDAO = require('./dynamo/AuditRecordsDAO.js');
 const botConfig = require('./s3/BotConfig.js');
 const logger = require('./logging/logger.js');
 const commandHelper = require('./util/CommandHelper.js');
+const queueManager = require('./queue/QueueManager.js');
 
 const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
 
@@ -34,6 +35,8 @@ client.on('ready', () => {
  * 		- !joinrandom
  * 		- !join
  * 		- !stats
+ * 
+ * 	FRIDAY: Add !ready logic and move current messages to only once the game is started (add phase between for readying!)
  */
 
 // Helper function to reply when someone is unauthorized
@@ -122,13 +125,14 @@ client.on('message', message => {
 		/*#########################################
 		 *      !join <h|t|m|r>
 		 #########################################*/
-		if (message.content.startsWith('!join ')) {
+		if (message.content.startsWith('!join ')) {			
 			try {
 				const authorTag = message.author.tag;
 				const args = message.content.split('!join ')[1]; // should be just 1 letter
 				if (commandHelper.isClass(args)) {
 					const classArg = args;
-					commandHelper.joinCommand(message, authorTag, classArg);
+					const userDiscordId = message.author.id;
+					commandHelper.joinCommand(message, authorTag, userDiscordId, classArg, client);
 				}
 				else {
 					replyInvalidUsage(message);
@@ -150,7 +154,8 @@ client.on('message', message => {
 					const classArg = argsArr.shift(); // leaves index 0 for classArg
 					argsArr.shift(); // get rid of space
 					const authorTag = argsArr.join('').trim();
-					commandHelper.joinCommand(message, authorTag, classArg);
+					const userDiscordId = message.author.id; // the actual author will get match ready PM
+					commandHelper.joinCommand(message, authorTag, userDiscordId, classArg, client);
 				}
 				else {
 					replyInvalidUsage(message);
@@ -547,6 +552,18 @@ client.on('message', message => {
 				const username = message.content.split('!getstats ')[1];
 				const userTargetObj = userStats.getPlayer(username);
 				message.reply("userstats\n: " + JSON.stringify(userTargetObj));
+			}
+			else {
+				console.log('not authorized');
+			}
+		}
+		/*#########################################
+		 *      !queues HIDDEN COMMAND SUPERADMIN
+		 #########################################*/
+		if (message.content.startsWith('!queues')) {
+			const requiredRole = 'superadmin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				message.reply("queues\n: " + JSON.stringify(queueManager.getQueues()));
 			}
 			else {
 				console.log('not authorized');
