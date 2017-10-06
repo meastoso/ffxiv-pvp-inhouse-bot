@@ -5,6 +5,7 @@ const userStats = require('./users/UserStats.js');
 const auditRecordsDAO = require('./dynamo/AuditRecordsDAO.js');
 const botConfig = require('./s3/BotConfig.js');
 const logger = require('./logging/logger.js');
+const commandHelper = require('./util/CommandHelper.js');
 
 const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
 
@@ -37,7 +38,7 @@ client.on('ready', () => {
 
 // Helper function to reply when someone is unauthorized
 function replyUnauthorized(message, requiredRole) {
-	message.reply('You are unauthorized to use that command. Required role: ' + requiredRole);
+	commandHelper.replyUnauthorized(message, requiredRole);
 }
 
 // Helper function used whenever a real command is used 
@@ -119,10 +120,53 @@ client.on('message', message => {
 			message.reply('I AM LOOKING FOR GIRLFRIEND');
 		}
 		/*#########################################
+		 *      !join <h|t|m|r>
+		 #########################################*/
+		if (message.content.startsWith('!join ')) {
+			try {
+				const authorTag = message.author.tag;
+				const args = message.content.split('!join ')[1]; // should be just 1 letter
+				if (commandHelper.isClass(args)) {
+					const classArg = args;
+					commandHelper.joinCommand(message, authorTag, classArg);
+				}
+				else {
+					replyInvalidUsage(message);
+				}
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during vouch command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !testjoin <h|t|m|r> <user>
+		 #########################################*/
+		if (message.content.startsWith('!testjoin ') && botConfig.isTestMode) {
+			try {
+				const args = message.content.split('!testjoin ')[1]; // should be just 1 letter
+				const argsArr = args.split(''); // makes array of the chars in the string
+				if (argsArr.length > 2 && commandHelper.isClass(argsArr[0]) && argsArr[1] == ' ') {
+					const classArg = argsArr.shift(); // leaves index 0 for classArg
+					argsArr.shift(); // get rid of space
+					const authorTag = argsArr.join('').trim();
+					commandHelper.joinCommand(message, authorTag, classArg);
+				}
+				else {
+					replyInvalidUsage(message);
+				}
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during vouch command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
 		 *      !vouch <user>
 		 #########################################*/
 		if (message.content.startsWith('!vouch ')) {
-			if (userMembership.isAuthorized(message.author, 'voucher')) {
+			const requiredRole = 'voucher';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
 					const username = message.content.split('!vouch ')[1];
 					if (userMembership.isUser(username)) {
@@ -139,8 +183,8 @@ client.on('message', message => {
 						}
 						else {
 							const userObj = userMembership.getUser(username); // assume not null since isUser passed
-							//if (userObj.user_role == 'waiting' && userObj.vouchers != null && userObj.vouchers != message.author.tag) {
-							if (userObj.user_role == 'waiting' && userObj.vouchers != null) { // THIS IS FOR SELF TESTING!
+							if (userObj.user_role == 'waiting' && userObj.vouchers != null && (userObj.vouchers != message.author.tag || botConfig.isTestMode())) {
+							//if (userObj.user_role == 'waiting' && userObj.vouchers != null) { // THIS IS FOR SELF TESTING!
 								//  set vouched = 1 and if requiredAdminApproval = false then set approved = 1 and approvers = 'auto-approved'
 								userMembership.finalizeVouch(userObj, message.author.tag)
 									.then((data) => {
@@ -216,7 +260,8 @@ client.on('message', message => {
 		 *      !data <user>
 		 #########################################*/
 		if (message.content.startsWith('!data ')) {
-			if (userMembership.isAuthorized(message.author, 'admin')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				// admins and super admins can see basic user details
 				let messageText = '';
 				try {
@@ -248,7 +293,7 @@ client.on('message', message => {
 					logger.log("ERROR", "Error trying to format user data, exception:", err);
 					replyInvalidUsage(message);
 				}
-				if (userMembership.isAuthorized(message.author, 'superadmin')) {
+				if (userMembership.isAuthorized(message.author.tag, 'superadmin')) {
 					// superadmins can see user stats in addition to basic data
 					// TODO
 					
@@ -272,7 +317,8 @@ client.on('message', message => {
 		 *      !count
 		 #########################################*/
 		if (message.content.startsWith('!count')) {
-			if (userMembership.isAuthorized(message.author, 'admin')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				message.reply("WHOA! There's " + userMembership.getApprovedUserCount() + " vouched and approved users in the KISADA inhouse league!");
 			}
 			else {
@@ -284,7 +330,8 @@ client.on('message', message => {
 		 *      !approvals
 		 #########################################*/
 		if (message.content.startsWith('!approvals')) {
-			if (userMembership.isAuthorized(message.author, 'admin')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				const approvalsStr = userMembership.getApprovals().join(', ');
 				if (approvalsStr.length < 1 || approvalsStr == '') {
 					message.reply("there are no users requiring approval at this time.");
@@ -302,7 +349,8 @@ client.on('message', message => {
 		 *      !approve <user>
 		 #########################################*/
 		if (message.content.startsWith('!approve ')) {
-			if (userMembership.isAuthorized(message.author, 'admin')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
 					const username = message.content.split('!approve ')[1];
 					if (userMembership.isUser(username)) {
@@ -338,7 +386,8 @@ client.on('message', message => {
 		 *      !role <user>
 		 #########################################*/
 		if (message.content.startsWith('!role ')) {
-			if (userMembership.isAuthorized(message.author, 'user')) {
+			const requiredRole = 'user';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
 					const username = message.content.split('!role ')[1];
 					if (userMembership.isUser(username)) {
@@ -364,7 +413,8 @@ client.on('message', message => {
 		 *      !ban <user> <reason>
 		 #########################################*/
 		if (message.content.startsWith('!ban ')) {
-			if (userMembership.isAuthorized(message.author, 'user')) {
+			const requiredRole = 'user';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
 					const username = message.content.split('!ban ')[1];
 					userMembership.banUser(username)
@@ -395,7 +445,7 @@ client.on('message', message => {
 				const allowedRoles = ['superadmin', 'admin', 'voucher', 'user'];
 				setUserRole(message, allowedRoles);
 			}
-			else if (userMembership.isAuthorized(message.author, 'superadmin')) {
+			else if (userMembership.isAuthorized(message.author.tag, 'superadmin')) {
 				// superadmins can also set the admin role, admins cannot
 				try {
 					const allowedRoles = ['admin', 'voucher', 'user'];
@@ -405,7 +455,7 @@ client.on('message', message => {
 					replyInvalidUsage(message);
 				}
 			}
-			else if (userMembership.isAuthorized(message.author, 'admin')) {
+			else if (userMembership.isAuthorized(message.author.tag, 'admin')) {
 				try {
 					const allowedRoles = ['voucher', 'user'];
 					setUserRole(message, allowedRoles);
@@ -424,7 +474,7 @@ client.on('message', message => {
 		 #########################################*/
 		if (message.content.startsWith('!setgraceperiod ')) {
 			const requiredRole = 'superadmin';
-			if (userMembership.isAuthorized(message.author, requiredRole)) {
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				const argsArr = message.content.split('!setgraceperiod ');
 				if (argsArr.length > 1 && isInteger(argsArr[1])) {
 					const newPeriod = parseInt(argsArr[1]);
@@ -451,7 +501,7 @@ client.on('message', message => {
 		 #########################################*/
 		if (message.content.startsWith('!vouchapproval ')) {
 			const requiredRole = 'superadmin';
-			if (userMembership.isAuthorized(message.author, requiredRole)) {
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				const argsArr = message.content.split('!vouchapproval ');
 				if (argsArr.length > 1 && (argsArr[1] == "on" || argsArr[1] == "off")) {
 					let isVouchApprovalRequired = true;
@@ -478,12 +528,25 @@ client.on('message', message => {
 		 *      !getuser <user> HIDDEN COMMAND SUPERADMIN
 		 #########################################*/
 		if (message.content.startsWith('!getuser ')) {
-			console.log('at getuser command');
 			const requiredRole = 'superadmin';
-			if (userMembership.isAuthorized(message.author, requiredRole)) {
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				const username = message.content.split('!getuser ')[1];
 				const userTargetObj = userMembership.getUser(username);
 				message.reply("user: " + JSON.stringify(userTargetObj));
+			}
+			else {
+				console.log('not authorized');
+			}
+		}
+		/*#########################################
+		 *      !getstats <user> HIDDEN COMMAND SUPERADMIN
+		 #########################################*/
+		if (message.content.startsWith('!getstats ')) {
+			const requiredRole = 'superadmin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				const username = message.content.split('!getstats ')[1];
+				const userTargetObj = userStats.getPlayer(username);
+				message.reply("userstats\n: " + JSON.stringify(userTargetObj));
 			}
 			else {
 				console.log('not authorized');

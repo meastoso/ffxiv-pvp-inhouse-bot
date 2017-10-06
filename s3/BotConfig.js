@@ -15,6 +15,8 @@ const configKey = 'pvp-bot-config-1';
 
 let configCache = {};
 
+const TEST_MODE = true;
+
 // method to get the current global configuration for the bot
 const getConfig = function() {
 	return new Promise((resolve, reject) => {
@@ -114,5 +116,8 @@ module.exports = {
 		setNewPlayerGracePeriod: setNewPlayerGracePeriod,
 		getNewPlayerGracePeriod: getNewPlayerGracePeriod,
 		setVouchApproval: setVouchApproval,
-		isVouchApprovalRequired: isVouchApprovalRequired
+		isVouchApprovalRequired: isVouchApprovalRequired,
+		isTestMode: function() {
+			return TEST_MODE;
+		}
 }

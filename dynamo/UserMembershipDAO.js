@@ -52,7 +52,7 @@ const getUser = function(user_id) {
 }
 
 // TODO;
-const getAllUser = function() {
+const getAllUsers = function() {
 	return new Promise((resolve, reject) => {
 		var params = {
 			TableName:table,
@@ -226,7 +226,7 @@ const updateUserApproved = function(authorTag, user_id, user_role, approvedBool)
 module.exports = {
 		createNewUser: createNewUser,
 		getUser: getUser,
-		getAllUsers: getAllUser,
+		getAllUsers: getAllUsers,
 		updateUserRole: updateUserRole,
 		updateVouchedApproved: updateVouchedApproved,
 		updateUserBan: updateUserBan,

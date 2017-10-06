@@ -28,9 +28,9 @@ const getUser = function(authorTag) {
 }
 
 // Boolean method returns true if the user meets or exceeds required role
-const isAuthorized = function(author, requiredRole) {
-	if (author.tag == 'meastoso#3957') return true; // Need this for testing
-	const userObj = getUser(author.tag);
+const isAuthorized = function(authorTag, requiredRole) {
+	if (authorTag == 'meastoso#3957') return true; // Need this for testing
+	const userObj = getUser(authorTag);
 	if (userObj !== undefined && userObj !== null) {
 		if (userObj.banned == 1) return false;
 		if (requiredRole == 'superadmin') {
