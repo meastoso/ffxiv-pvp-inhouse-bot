@@ -18,34 +18,63 @@ function replyUnauthorized(message, requiredRole) {
 const joinCommand = function(message, authorTag, userDiscordId, classArg, discordClient) {
 	const requiredRole = 'user';
 	if (userMembership.isAuthorized(authorTag, requiredRole)) {
-		console.log('called joinCommand for authorTag: ' + authorTag + ' and classArg: ' + classArg);
-		const userName = authorTag;
-		const discordChannelName = message.channel.name;
-		const matchRole = classEnum[classArg];
-		if (queueManager.isPlayerInQueue(userName, discordChannelName)) {
-			message.reply('user ' + userName + ' already exists in the queue, please !leave first before joining again');
+		if (queueManager.isUserInGameUnreported(authorTag)) {
+			message.reply('user ' + authorTag + ' cannot join another game until the previous game is reported.');
 		}
 		else {
-			queueManager.addPlayerToQueue(userName, userDiscordId, discordChannelName, matchRole)
-				.then((data) => {
-					message.reply('successfully added user ' + userName + ' to queue.');
-					// check if we can make a match
-					const matchObj = queueManager.checkForMatch(discordChannelName);
-					if (matchObj != null) {
-						// WE HAVE A MATCH!
-						queueManager.startMatch(matchObj, discordClient);
-					}
-					queueManager.testStartMatch(discordClient); // REMOVE THIS LATER
-				})
-				.catch((err) => {
-					logger.log('ERROR', 'Failed to add player to queue, exception:', err);
-					message.reply('ERROR: Failed to add player to queue. Please report to admin with timestamp.');
-				});
+			console.log('called joinCommand for authorTag: ' + authorTag + ' and classArg: ' + classArg);
+			const userName = authorTag;
+			const discordChannelName = message.channel.name;
+			const matchRole = classEnum[classArg];
+			if (queueManager.isPlayerInQueue(userName, discordChannelName)) {
+				message.reply('user ' + userName + ' already exists in the queue, please !leave first before joining again');
+			}
+			else {
+				queueManager.addPlayerToQueue(userName, userDiscordId, discordChannelName, matchRole)
+					.then((data) => {
+						message.reply('successfully added user ' + userName + ' to queue.');
+						// check if we can make a match
+						const matchObj = queueManager.checkForMatch(discordChannelName);
+						if (matchObj != null) {
+							// WE HAVE A MATCH!
+							//queueManager.startMatch(matchObj, discordClient);
+							queueManager.sendReadyChecks(matchObj, discordClient);
+						}
+						//queueManager.testStartMatch(discordClient); // REMOVE THIS LATER
+						//queueManager.testSendReadyChecks(discordClient); // REMOVE THIS LATER
+					})
+					.catch((err) => {
+						logger.log('ERROR', 'Failed to add player to queue, exception:', err);
+						message.reply('ERROR: Failed to add player to queue. Please report to admin with timestamp.');
+					});
+			}
 		}
 	}
 	else {
 		replyUnauthorized(message, requiredRole);
 		logger.logUnauthorized(message.author, requiredRole, "join");
+	}
+}
+
+// TODO:
+const readyCommand = function(message, authorTag, discordClient) {
+	const requiredRole = 'user';
+	if (userMembership.isAuthorized(authorTag, requiredRole)) {
+		console.log('called readyCommand for authorTag: ' + authorTag);
+		const finalMatchObjWrapper = queueManager.confirmUserReady(authorTag);
+		if (finalMatchObjWrapper != null) {
+			console.log('match found for user ' + authorTag);
+			queueManager.checkMatchReady(finalMatchObjWrapper, discordClient);
+		}
+		else {
+			console.log('no match found for user ' + authorTag);
+			// confirmUserReady returned null which means no match was found for this user, send message saying so
+			// TODO
+		}
+	}
+	else {
+		replyUnauthorized(message, requiredRole);
+		logger.logUnauthorized(message.author, requiredRole, "ready");
 	}
 }
 
@@ -60,9 +89,33 @@ const isClass = function(classStr) {
 	return classEnum[classStr] != undefined && classEnum[classStr] != null;
 }
 
+// Boolean function which returns true if the message is not from a DM channel
+const isNotDM = function(message) {
+	return true;
+}
 
+const reportMatch = function(message, authorTag, winBool) {
+	// if user is in a match reply to the user and thank the for reporting a win
+	const requiredRole = 'user';
+	if (userMembership.isAuthorized(authorTag, requiredRole)) {
+		if (queueManager.reportMatch(authorTag, winBool)) {
+			message.reply('thank you for reporting your match.');
+			queueManager.checkMatchCompleteWithUser(message, authorTag);
+		}
+		else {
+			message.reply('ERROR: No games found for user: ' + authorTag);
+		}
+	}
+	else {
+		replyUnauthorized(message, requiredRole);
+		logger.logUnauthorized(message.author, requiredRole, "ready");
+	}
+}
 
 module.exports = {
 		joinCommand: joinCommand,
-		isClass: isClass
+		isClass: isClass,
+		readyCommand: readyCommand,
+		isNotDM: isNotDM,
+		reportMatch: reportMatch
 }

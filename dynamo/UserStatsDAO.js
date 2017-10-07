@@ -53,31 +53,32 @@ const getUserStats = function(user_id, user_role) {
 	});
 }
 
-//getItem("meastoso#3957", "healer");
-
-// TODO FIX THIS FOR NEW MODEL
 const updateMMR = function(user_id, user_role, datacenter, newMMR) {
-	// Update the item, unconditionally,
-	var params = {
-	    TableName:table,
-	    Key:{
-	        "user_id": user_id,
-	        "user_role": user_role
-	    },
-	    UpdateExpression: "set mmrDatacenterMap." + datacenter + " = :m",
-	    ExpressionAttributeValues:{
-	        ":m":newMMR
-	    },
-	    ReturnValues:"UPDATED_NEW"
-	};
-
-	console.log("Updating the item...");
-	docClient.update(params, function(err, data) {
-	    if (err) {
-	        console.error("Unable to update item. Error JSON:", JSON.stringify(err, null, 2));
-	    } else {
-	        console.log("UpdateItem succeeded:", JSON.stringify(data, null, 2));
-	    }
+	return new Promise((resolve, reject) => {
+		// Update the item, unconditionally,
+		var params = {
+		    TableName:table,
+		    Key:{
+		        "user_id": user_id,
+		        "user_role": user_role
+		    },
+		    UpdateExpression: "set mmrDatacenterMap." + datacenter + ".rating = :m",
+		    ExpressionAttributeValues:{
+		        ":m":newMMR
+		    },
+		    ReturnValues:"UPDATED_NEW"
+		};
+	
+		console.log("Updating the item...");
+		docClient.update(params, function(err, data) {
+		    if (err) {
+		        console.error("Unable to update item. Error JSON:", JSON.stringify(err, null, 2));
+		        reject(err);
+		    } else {
+		        console.log("UpdateItem succeeded:", JSON.stringify(data, null, 2));
+		        resolve(data);
+		    }
+		});
 	});
 }
 

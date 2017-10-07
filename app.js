@@ -36,7 +36,10 @@ client.on('ready', () => {
  * 		- !join
  * 		- !stats
  * 
- * 	FRIDAY: Add !ready logic and move current messages to only once the game is started (add phase between for readying!)
+ * 	TODO:
+ * 		- add timeout to !readycheck
+ * 		- add timeout to !win/lose
+ * 		- remove players from queue who miss readycheck
  */
 
 // Helper function to reply when someone is unauthorized
@@ -123,9 +126,44 @@ client.on('message', message => {
 			message.reply('I AM LOOKING FOR GIRLFRIEND');
 		}
 		/*#########################################
+		 *      !chris
+		 #########################################*/
+		if (message.content.startsWith('!chris') && message.author.tag == 'meastoso#3957') {	
+			function doit(name, classArg) {
+				commandHelper.joinCommand(message, name, message.author.id, classArg, client);
+			}
+			setTimeout(function() { doit('healer1#123', 'h') }, 1000);
+			setTimeout(function() { doit('healer2#123', 'h') }, 2000);
+			setTimeout(function() { doit('tank1#123', 't') }, 3000);
+			setTimeout(function() { doit('tank2#123', 't') }, 4000);
+			setTimeout(function() { doit('melee1#123', 'm') }, 5000);
+			setTimeout(function() { doit('melee2#123', 'm') }, 6000);
+			setTimeout(function() { doit('ranged1#123', 'r') }, 7000);
+			setTimeout(function() { doit('ranged2#123', 'r') }, 8000);
+			
+		}
+		/*#########################################
+		 *      !andy
+		 #########################################*/
+		if (message.content.startsWith('!andy') && message.author.tag == 'meastoso#3957') {	
+			function doit(name, classArg) {
+				//commandHelper.joinCommand(message, name, message.author.id, classArg, client);
+				commandHelper.readyCommand(message, name, client);
+			}
+			setTimeout(function() { doit('healer1#123', 'h') }, 1000);
+			setTimeout(function() { doit('healer2#123', 'h') }, 2000);
+			setTimeout(function() { doit('tank1#123', 't') }, 3000);
+			setTimeout(function() { doit('tank2#123', 't') }, 4000);
+			setTimeout(function() { doit('melee1#123', 'm') }, 5000);
+			setTimeout(function() { doit('melee2#123', 'm') }, 6000);
+			setTimeout(function() { doit('ranged1#123', 'r') }, 7000);
+			setTimeout(function() { doit('ranged2#123', 'r') }, 8000);
+			
+		}
+		/*#########################################
 		 *      !join <h|t|m|r>
 		 #########################################*/
-		if (message.content.startsWith('!join ')) {			
+		if (message.content.startsWith('!join ') && commandHelper.isNotDM(message)) {
 			try {
 				const authorTag = message.author.tag;
 				const args = message.content.split('!join ')[1]; // should be just 1 letter
@@ -139,14 +177,14 @@ client.on('message', message => {
 				}
 			}
 			catch(err) {
-				logger.log("ERROR", "Caught exception during vouch command:", err);
+				logger.log("ERROR", "Caught exception during join command:", err);
 				replyInvalidUsage(message);
 			}
 		}
 		/*#########################################
 		 *      !testjoin <h|t|m|r> <user>
 		 #########################################*/
-		if (message.content.startsWith('!testjoin ') && botConfig.isTestMode) {
+		if (message.content.startsWith('!testjoin ') && botConfig.isTestMode && commandHelper.isNotDM(message)) {
 			try {
 				const args = message.content.split('!testjoin ')[1]; // should be just 1 letter
 				const argsArr = args.split(''); // makes array of the chars in the string
@@ -162,7 +200,98 @@ client.on('message', message => {
 				}
 			}
 			catch(err) {
-				logger.log("ERROR", "Caught exception during vouch command:", err);
+				logger.log("ERROR", "Caught exception during testjoin command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !ready
+		 #########################################*/
+		if (message.content.startsWith('!ready')) {			
+			try {
+				const authorTag = message.author.tag;
+				const userDiscordId = message.author.id;
+				commandHelper.readyCommand(message, authorTag, client);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during ready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !testready <user>
+		 #########################################*/
+		if (message.content.startsWith('!testready ') && botConfig.isTestMode) {
+			try {
+				const username = message.content.split('!testready ')[1];
+				const authorTag = username;
+				const userDiscordId = message.author.id;
+				commandHelper.readyCommand(message, authorTag, client);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during testready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !win
+		 #########################################*/
+		if (message.content.startsWith('!win')) {			
+			try {
+				const authorTag = message.author.tag;
+				const userDiscordId = message.author.id;
+				const winBool = true;
+				commandHelper.reportMatch(message, authorTag, winBool);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during ready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !testwin <user>
+		 #########################################*/
+		if (message.content.startsWith('!testwin ') && botConfig.isTestMode) {
+			try {
+				const username = message.content.split('!testwin ')[1];
+				const authorTag = username;
+				const userDiscordId = message.author.id;
+				const winBool = true;
+				commandHelper.reportMatch(message, authorTag, winBool);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during testready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !lose
+		 #########################################*/
+		if (message.content.startsWith('!lose')) {			
+			try {
+				const authorTag = message.author.tag;
+				const userDiscordId = message.author.id;
+				const winBool = false;
+				commandHelper.reportMatch(message, authorTag, winBool);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during ready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !testlose <user>
+		 #########################################*/
+		if (message.content.startsWith('!testlose ') && botConfig.isTestMode) {
+			try {
+				const username = message.content.split('!testlose ')[1];
+				const authorTag = username;
+				const userDiscordId = message.author.id;
+				const winBool = false;
+				commandHelper.reportMatch(message, authorTag, winBool);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during testready command:", err);
 				replyInvalidUsage(message);
 			}
 		}
@@ -564,6 +693,31 @@ client.on('message', message => {
 			const requiredRole = 'superadmin';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				message.reply("queues\n: " + JSON.stringify(queueManager.getQueues()));
+			}
+			else {
+				console.log('not authorized');
+			}
+		}
+		/*#########################################
+		 *      !rcmq HIDDEN COMMAND SUPERADMIN
+		 #########################################*/
+		if (message.content.startsWith('!rcmq')) {
+			const requiredRole = 'superadmin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				message.reply("getReadyCheckMatchQueue\n: " + JSON.stringify(queueManager.getReadyCheckMatchQueue()));
+			}
+			else {
+				console.log('not authorized');
+			}
+		}
+		/*#########################################
+		 *      !matches HIDDEN COMMAND SUPERADMIN
+		 #########################################*/
+		if (message.content.startsWith('!matches')) {
+			const requiredRole = 'superadmin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				//message.reply("matches\n: " + JSON.stringify(queueManager.getMatches()));
+				console.log(queueManager.getMatches());
 			}
 			else {
 				console.log('not authorized');

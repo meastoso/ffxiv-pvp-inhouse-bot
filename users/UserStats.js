@@ -54,10 +54,22 @@ const getPlayer = function(userName) {
 	return userStatsCache[userName];
 }
 
+function getInitialRatingFromOtherDatacenter(userName, matchRole) {
+	const initialRating = 1000;
+	const playerMMRMap = getPlayer(userName).mmrDatacenterMap;
+	for (let datacenter in playerMMRMap) {
+		if (parseInt(playerMMRMap[datacenter].rating) > initialRating) {
+			initialRating = parseInt(playerMMRMap[datacenter].rating);
+		}
+	}
+	return initialRating;
+}
+
 const addNewDatacenterToPlayer = function(userName, matchRole, newDatacenter) {
 	return new Promise((resolve, reject) => {
 		const newDatacenterObj = {};
-		newDatacenterObj['rating'] = 1000; // GET THIS FROM HIGHEST
+		const initialRating = getInitialRatingFromOtherDatacenter(userName, matchRole);
+		newDatacenterObj['rating'] = initialRating; // GET THIS FROM HIGHEST
 		newDatacenterObj['total_won'] = 0;
 		newDatacenterObj['total_games'] = 0;
 		userStatsDAO.addNewDatacenterToUser(userName, matchRole, newDatacenter, newDatacenterObj)
@@ -74,9 +86,34 @@ const addNewDatacenterToPlayer = function(userName, matchRole, newDatacenter) {
 	});
 }
 
+const updatePlayerMMRMatchComplete = function(user_id, user_role, datacenter, winBool) {
+	return new Promise((resolve, reject) => {
+		let player = getPlayer(user_id);
+		let newMMR = parseInt(player[user_role].mmrDatacenterMap[datacenter].rating);
+		if (winBool) {
+			newMMR = newMMR + 25;
+		}
+		else {
+			newMMR = newMMR - 25;
+		}
+		userStatsDAO.updateMMR(user_id, user_role, datacenter, newMMR)
+			.then((data) => {
+				// NOW UPDATE CACHE
+				userStatsCache[user_id][user_role].mmrDatacenterMap[datacenter].rating = newMMR;
+				resolve(data);
+			})
+			.catch((err) => {
+				console.log('Caught error in UserStats.updatePlayerMMRMatchComplete() method:');
+				console.log(err);
+				reject(err);
+			});
+	});
+}
+
 
 module.exports = {
 		getPlayer: getPlayer,
 		createUserRecord: createUserRecord,
-		addNewDatacenterToPlayer, addNewDatacenterToPlayer
+		addNewDatacenterToPlayer, addNewDatacenterToPlayer,
+		updatePlayerMMRMatchComplete: updatePlayerMMRMatchComplete
 }

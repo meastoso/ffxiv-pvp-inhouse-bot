@@ -4,7 +4,11 @@
 const userStats = require('../users/UserStats.js'); 
 
 // NOTE: I want this to be an ENUM but because kisada can change channel names
+// Returns null if no discord channel is passed
 function getDatacenterFromDiscordChannel(discordChannelName) {
+	if (discordChannelName == undefined || discordChannelName == null) {
+		return null;
+	}
 	if (discordChannelName.includes("primal-queues")) {
 		return "primal";
 	}
@@ -25,6 +29,7 @@ function getDatacenterFromDiscordChannel(discordChannelName) {
 	}
 }
 
+// cache object to hold queues
 const queues = {
 		'primal': [],
 		'aether': [],
@@ -33,6 +38,10 @@ const queues = {
 		'gaia': [],
 		'elemental': []
 };
+
+// holds matches ready to go that are waiting for ready check, array of type finalMatchObjWrapper
+const readyCheckMatchQueue = [];
+const activeMatches = [];
 
 /**
  * queuePlayerObj = {
@@ -56,6 +65,7 @@ function getQueuePlayerObj(playerName, userDiscordId, playerObj, datacenter, rol
 	queuePlayerObj[role] = 1;
 	queuePlayerObj[role + 'MMR'] = playerObj[role].mmrDatacenterMap[datacenter].rating;
 	queuePlayerObj['userDiscordId'] = userDiscordId;
+	queuePlayerObj['datacenter'] = datacenter;
 	return queuePlayerObj;
 }
 
@@ -161,10 +171,107 @@ const checkForMatch = function(discordChannelName) {
 	return null;
 }
 
-const startMatch = function(matchObj, discordClient) {
+// only call this once ready checks have been confirmed
+const startMatch = function(finalMatchObjWrapper, discordClient) {
+	//now that ready checks have finished send out match details and wait for win/lose
+	sendMatchDetailsDM(finalMatchObjWrapper.finalMatchObj, discordClient);
+	activeMatches.push(finalMatchObjWrapper);
+	// go remove these players from the queue
+	removePlayersFromQueues(finalMatchObjWrapper);
+	console.log('added finalMatchObj to activeMatches array.');
+}
+
+function removePlayersFromQueues(finalMatchObjWrapper) {
+	// loop through each key and remove that user_id from the queue for this datacenter
+	for (let key in finalMatchObjWrapper) {
+		if (key != 'finalMatchObj') {
+			// found a player that hasn't readied yet
+			const user_id = key;
+			removePlayerFromQueues(user_id);
+		}
+	}
+}
+
+function removePlayerFromQueues(user_id) {
+	for (let datacenter in queues) {
+		currQueue = queues[datacenter];
+		if (currQueue.length > 0) {
+			for (let i = 0; i < currQueue.length; i++) {
+				// loop through the queue, find the player and splice
+				if (currQueue[i].user_id == user_id) {
+					currQueue.splice(i,1);
+				}
+			}
+		}
+	}
+}
+
+// don't need to get ready checks from spectators
+const sendReadyChecks = function(matchObj, discordClient) {
 	const finalMatchObj = sortMatch(matchObj);
-	// now send DMs to each user in the match
+	finalMatchObj.claws.forEach(function(queuePlayerObj) {
+		//const userDiscordId = queuePlayerObj.userDiscordId;
+		const userDiscordId = '195033055512100864'; // meastoso discord ID
+		const username = queuePlayerObj.user_id;
+		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
+		sendReadyCheckDM(userDiscordId, username, role, discordClient);
+	});
+	// Send DMs for fangs
+	finalMatchObj.fangs.forEach(function(queuePlayerObj) {
+		//const userDiscordId = queuePlayerObj.userDiscordId;
+		const userDiscordId = '195033055512100864'; // meastoso discord ID
+		const username = queuePlayerObj.user_id;
+		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
+		sendReadyCheckDM(userDiscordId, username, role, discordClient);
+	});
+	// add final match obj to match ready queue cache
+	const finalMatchObjWrapper = getFinalMatchObjWrapper(finalMatchObj);
+	readyCheckMatchQueue.push(finalMatchObjWrapper);
+	console.log('finished sending out ready check DMs and pushed final match obj to match ready queue');
 	
+	// TODO: ADD A TIMEOUT OF 1 MINUTE HERE TO CALL A FUNCTION TO CLEAN UP QUEUE
+}
+
+// helper to wrap some utility into the final match obj
+function getFinalMatchObjWrapper(finalMatchObj) {
+	const finalMatchObjWrapper = {
+			'finalMatchObj': finalMatchObj
+	};
+	for (let i = 0; i < finalMatchObj.claws.length; i++) {
+		const queuePlayerObj = finalMatchObj.claws[i];
+		// add each player as object key in wrapper obj with value 0; 
+		// changes to 1 when players sends !ready
+		finalMatchObjWrapper[queuePlayerObj.user_id] = 0;
+	}
+	for (let i = 0; i < finalMatchObj.fangs.length; i++) {
+		const queuePlayerObj = finalMatchObj.fangs[i];
+		// add each player as object key in wrapper obj with value 0; 
+		// changes to 1 when players sends !ready
+		finalMatchObjWrapper[queuePlayerObj.user_id] = 0;
+	}
+	return finalMatchObjWrapper;
+}
+
+function sendReadyCheckDM(userDiscordId, username, role, discordClient) {
+	let mt = 'Hello ' + username + ', you have been added to a match as ' + role + '!';
+	mt = mt + ' Please confirm you are ready by entering "!ready" in this private message channel.';
+	mt = mt + ' If you do not !ready within 1 minute you will be removed from the queue and timed-out for 30 minutes.';
+	discordClient.fetchUser(userDiscordId)
+		.then((user) => {
+			user.createDM()
+				.then((dmChannel) => {
+					dmChannel.send(mt);
+				})
+				.catch((err) => {
+					logger.log("ERROR", "Caught exception sending match ready DM to user:", err);
+				});
+		})
+		.catch((err) => {
+			logger.log("ERROR", "Caught exception fetching user to send match DM:", err);
+		});
+}
+
+function sendMatchDetailsDM(finalMatchObj, discordClient) {
 	console.log(finalMatchObj);
 	const randomMatchNumber = Math.floor(1000 + Math.random() * 9000);
 	const randomPassword = Math.floor(1000 + Math.random() * 9000);
@@ -301,6 +408,9 @@ const getQueues = function() {
 
 const isPlayerInQueue = function(playerName, discordChannelName) {
 	const datacenter = getDatacenterFromDiscordChannel(discordChannelName);
+	if (datacenter == undefined) {
+		return false;
+	}
 	const q = queues[datacenter];
 	for (let i = 0; i < q.length; i++) {
 		if (q[i].user_id == playerName) {
@@ -310,73 +420,189 @@ const isPlayerInQueue = function(playerName, discordChannelName) {
 	return false;
 }
 
-// TEST TEST TEST DELETE THIS LATER
-healerArrTest = [];
-tankArrTest = [];
-meleeArrTest = [];
-rangedArrTest = [];
+// returns finalMatchObjWrapper if user is confirmed, null if no match is found
+const confirmUserReady = function(username) {
+	// loop through each finalMatchObjWrapper in the readyCheckMatchQueue to find match this player belongs to
+	for (let i = 0; i < readyCheckMatchQueue.length; i++) {
+		const finalMatchObjWrapper = readyCheckMatchQueue[i];
+		for (let key in finalMatchObjWrapper) {
+			if (key == username) {
+				// found a match with this user
+				console.log('found user in match, setting to 1 and returning match!');
+				finalMatchObjWrapper[username] = 1;
+				return finalMatchObjWrapper;
+			}
+		}
+	}
+	return null; // returning null means we did not find a match with this user as a player
+}
 
-// make healers
-healer1 = {
-		'user_id': 'meastoso#3957',
-		'healer': 1,
-		'healerMMR': 1600
-};
-healerArrTest.push(healer1);
-healer2 = {
-		'user_id': 'aviars#3957',
-		'healer': 1,
-		'healerMMR': 2400
-};
-healerArrTest.push(healer2);
-tank1 = {
-		'user_id': 'lion#3957',
-		'tank': 1,
-		'tankMMR': 1900
-};
-tankArrTest.push(tank1);
-tank2 = {
-		'user_id': 'dark#3957',
-		'tank': 1,
-		'tankMMR': 1400
-};
-tankArrTest.push(tank2);
-melee1 = {
-		'user_id': 'kisada#3957',
-		'melee': 1,
-		'meleeMMR': 1750
-};
-meleeArrTest.push(melee1);
-melee2 = {
-		'user_id': 'melo#3957',
-		'melee': 1,
-		'meleeMMR': 1900
-};
-meleeArrTest.push(melee2);
-ranged1 = {
-		'user_id': 'miyu#3957',
-		'ranged': 1,
-		'rangedMMR': 1120
-};
-rangedArrTest.push(ranged1);
-ranged2 = {
-		'user_id': 'elia#3957',
-		'ranged': 1,
-		'rangedMMR': 1450
-};
-rangedArrTest.push(ranged2);
+// checks the finalMatchObjWrapper to see if all players have confirmed
+const checkMatchReady = function(finalMatchObjWrapper, discordClient) {
+	// loop through each property of this object and confirm all nonMatchObj (players) == 1
+	let allConfirmed = true;
+	let single_user = '';
+	for (let key in finalMatchObjWrapper) {
+		if (key != 'finalMatchObj' && finalMatchObjWrapper[key] != 1) {
+			// found a player that hasn't readied yet
+			allConfirmed = false;
+		}
+		if (key != 'finalMatchObj') {
+			single_user = key; // just need 1 user to find in matchqueuebyuser
+		}
+	}
+	if (allConfirmed) {
+		console.log('all confirmed ready for match!');
+		startMatch(finalMatchObjWrapper, discordClient);
+		removeMatchFromReadyCheckMatchQueueByUser(single_user);
+	}
+	else {
+		console.log('not all confirmed ready!');
+	}
+}
 
-const matchObjTest = {
-		'healerArr': healerArrTest,
-		'tankArr': tankArrTest,
-		'meleeArr': meleeArrTest,
-		'rangedArr': rangedArrTest
+function removeMatchFromReadyCheckMatchQueueByUser(username) {
+	for (let i = 0; i < readyCheckMatchQueue.length; i++) {
+		const finalMatchObjWrapper = readyCheckMatchQueue[i];
+		for (let key in finalMatchObjWrapper) {
+			if (key == username) {
+				// found a match with this user to delete
+				readyCheckMatchQueue.splice(i, 1);
+			}
+		}
+	}
+}
+
+
+//return true if the report was successful, false if not found
+const reportMatch = function(username, winBool) {
+	// TODO: add timestamp to finalGameObj and check it to clear old games nobody reported
+	// TODO: add game number to finalMatchObj
+	for (let i = 0; i < activeMatches.length; i++) {
+		//const finalMatchObjWrapper = activeMatches[i];
+		for (let key in activeMatches[i]) {
+			if (key == username && activeMatches[i][key] != 'win' && activeMatches[i][key] != 'lose') {
+				if (winBool) {
+					activeMatches[i][key] = 'win';
+				}
+				else {
+					activeMatches[i][key] = 'lose';
+				}
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+//Returns true if the user is in a game but hasn't reported yet
+const isUserInGameUnreported = function(username) {
+	// loop through activeGames and find if the user key exists for any of the game objects
+	for (let i = 0; i < activeMatches.length; i++) {
+		const finalMatchObjWrapper = activeMatches[i];
+		for (let key in finalMatchObjWrapper) {
+			if (key == username && finalMatchObjWrapper[key] != 'win' && finalMatchObjWrapper[key] != 'lose') {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+const checkMatchCompleteWithUser = function(message, username) {
+	// loop through each of the games
+	for (let i = 0; i < activeMatches.length; i++) {
+		const finalMatchObjWrapper = activeMatches[i];
+		for (let key in finalMatchObjWrapper) {
+			if (key == username) {
+				// found match with this user
+				let fangsWin = 0;
+				let fangsLose = 0;
+				let clawsWin = 0;
+				let clawsLose = 0;
+				const finalMatchObj = finalMatchObjWrapper.finalMatchObj;
+				for (let i = 0; i < finalMatchObj.claws.length; i++) {
+					if (finalMatchObjWrapper[finalMatchObj.claws[i].user_id] == 'win') {
+						clawsWin = clawsWin + 1;
+						console.log('added win for claws, new clawsWin value: ' + clawsWin);
+					}
+					else if (finalMatchObjWrapper[finalMatchObj.claws[i].user_id] == 'lose') {
+						clawsLose = clawsLose + 1;
+						console.log('added lose for claws, new clawsLose value: ' + clawsLose);
+					}
+				}
+				for (let i = 0; i < finalMatchObj.fangs.length; i++) {
+					if (finalMatchObjWrapper[finalMatchObj.fangs[i].user_id] == 'win') {
+						fangsWin = fangsWin + 1;
+						console.log('added win for fangs, new fangsWin value: ' + fangsWin);
+					}
+					else if (finalMatchObjWrapper[finalMatchObj.fangs[i].user_id] == 'lose') {
+						fangsLose = fangsLose + 1;
+						console.log('added lose for fangs, new fangsLose value: ' + fangsLose);
+					}
+				}
+				// compare totals and figure out who won or lost or if there are conflicts
+				if (fangsWin + clawsLose > 4) {
+					// the fangs win and we have at least 5 people report
+					message.reply('thank you for reporting, the Fangs have won, MMR has been adjusted and the match has been closed.');
+					const clawsWinBool = false;
+					adjustMMR(finalMatchObj, clawsWinBool);
+					activeMatches.splice(i,1);// remove game 
+				}
+				else if (clawsWin + fangsLose > 4) {
+					// the claws win and we have at least 5 people report
+					message.reply('thank you for reporting, the Claws have won, MMR has been adjusted and the match has been closed.');
+					const clawsWinBool = true;
+					adjustMMR(finalMatchObj, clawsWinBool);
+					activeMatches.splice(i,1);// remove game 
+				}
+				else if (clawsWin > 0 && fangsWin > 0) {
+					// conflicting report, send messages to admins
+					console.log('found conflicting reports for this match!');
+					message.reply('thank you for reporting the match but we found conflicts in the reports. Please notify an Admin to review this match');
+					activeMatches.splice(i,1);// remove game 
+				}
+				else {
+					console.log('Checked if the match was completed but not enough reports yet');
+				}
+				return null; // return to break out of loop
+			}
+		}
+	}
+}
+
+function adjustMMR(finalMatchObj, clawsWinBool) {
+	// loop through claws and fangs arr, +25 if win, -25 if lose 
+	for (let i = 0; i < finalMatchObj.claws.length; i++) {
+		const queuePlayerObj = finalMatchObj.claws[i];
+		const winBool = clawsWinBool;
+		const user_role = getRoleFromQueryPlayerObj(queuePlayerObj);
+		userStats.updatePlayerMMRMatchComplete(queuePlayerObj.user_id, user_role, queuePlayerObj.datacenter, winBool);
+	}
+	for (let i = 0; i < finalMatchObj.fangs.length; i++) {
+		const queuePlayerObj = finalMatchObj.fangs[i];
+		const winBool = !clawsWinBool;
+		const user_role = getRoleFromQueryPlayerObj(queuePlayerObj);
+		userStats.updatePlayerMMRMatchComplete(queuePlayerObj.user_id, user_role, queuePlayerObj.datacenter, winBool);
+	}
+	console.log('finished updating players MMR');
 }
 
 const testStartMatch = function(discordClient) {
 	startMatch(matchObjTest, discordClient);
 }
 	
+const testSendReadyChecks = function(discordClient) {
+	sendReadyChecks(matchObjTest, discordClient);
+}
+
+const getReadyCheckMatchQueue = function() {
+	return readyCheckMatchQueue;
+}
+
+const getMatches = function() {
+	return activeMatches;
+}
 
 module.exports = {
 		addPlayerToQueue: addPlayerToQueue,
@@ -384,5 +610,14 @@ module.exports = {
 		getQueues: getQueues,
 		startMatch: startMatch,
 		isPlayerInQueue: isPlayerInQueue,
-		testStartMatch: testStartMatch
+		testStartMatch: testStartMatch,
+		testSendReadyChecks: testSendReadyChecks,
+		confirmUserReady: confirmUserReady,
+		checkMatchReady: checkMatchReady,
+		getReadyCheckMatchQueue: getReadyCheckMatchQueue,
+		sendReadyChecks: sendReadyChecks,
+		reportMatch: reportMatch,
+		isUserInGameUnreported: isUserInGameUnreported,
+		checkMatchCompleteWithUser: checkMatchCompleteWithUser,
+		getMatches: getMatches
 }
