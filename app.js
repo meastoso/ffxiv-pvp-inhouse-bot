@@ -8,7 +8,8 @@ const logger = require('./logging/logger.js');
 const commandHelper = require('./util/CommandHelper.js');
 const queueManager = require('./queue/QueueManager.js');
 
-const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
+//const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
+const botAppID = 'MzY2MDkyNjY0ODQxNjk5MzMw.DLn2LQ.udWvmeDU8YvEVt-JC7uLmW1wIs8'; // THIS IS DEV BOT
 
 const availableRoles = ['superadmin', 'admin', 'voucher', 'user'];
 
@@ -20,26 +21,53 @@ client.on('ready', () => {
  * Current TODO LIST:
  * 
  * 	- Implement remaining non-queue/matchmaking commands
- * 		- !data <user> (INCLUDE STATS FOR SUPERADMINS)
- * 		- !queueinfo
+ * 		- (done) !data <user> (INCLUDE STATS FOR SUPERADMINS)
+ * 		- (done) !queueinfo
  * 		- !move <user> <pos>
- * 		- !remove <user>
- * 		- !clear
+ * 		- (done) !remove <user>
+ * 		- (done) !clear
  * 		- !timeout <user> <min>
  * 
  * 			** ALL USER COMMANDS HERE: **
- * 		- !showqueue
- * 		- !lose / !win
- * 		- !leave
- * 		- !joinspec
+ * 		- (done) !showqueue
+ * 		- (done) !lose / !win
+ * 		- (done) !leave
+ * 		- (done) !joinspec
  * 		- !joinrandom
- * 		- !join
- * 		- !stats
+ * 		- (done) !join
+ * 		- (done) !stats
  * 
  * 	TODO:
  * 		- add timeout to !readycheck
  * 		- add timeout to !win/lose
- * 		- remove players from queue who miss readycheck
+ * 		- remove players from queue who miss readycheck (when restoring in queue, may need to know which other queues they were in)
+ * 		- review all error messages, format them, ensure they are useful for debugging, add extra messages we might need
+ * 		- pick the match-admin and send different message
+ * 		- (done) for joinspec validate user isn't already queued for spec in that datacenter already to avoid duplicates
+ * 		- (done) remove user from spec queue if called from leave/remove command
+ * 
+ * 
+ * Change Log deployed 10/7/2017 @ 2:00 PM EST:
+ * 		- added ability to use @username mentions in non-test commands that have user as an argument
+ * 			NOTE: This will NOT work for test commands, such as !testjoin, !testwin, !testready and !teststats
+ * 		- added user stats for superadmins to !data
+ * 		- FIXED: issue where total_won and total_games were not being incremented when match completes
+ * 		- Added !stats and !teststats <user> commands
+ * 		- Replaced message text with "KIHL" to "KIC"
+ * 
+ * Change Log deployed 10/7/2017 @ 4:00 PM EST:
+ * 		- NEW: added !leave and !testleave <user> commands
+ * 		- NEW: added !showqueue command (all registered users can execute this command)
+ * 		- NEW: added admin-only command !queueinfo
+ * 		- NEW: added admin-only command !remove <user>
+ * 		- NEW: added admin-only command !clear
+ * 
+ * Change Log deployed 10/7/2017 @ 8:38 PM EST
+ * 		- NEW: added !joinspec command to join as a spectator
+ * 				NOTE: Spectator queue is affected by !leave and !remove as well as match-starting events
+ * 
+ *  * Change Log deployed xxxx PM EST
+ * 		- NEW: 
  */
 
 // Helper function to reply when someone is unauthorized
@@ -60,20 +88,54 @@ function isInteger(n) {
 
 // helper function for the !setrole command
 function setUserRole(message, allowedRoles) {
-	const args = message.content.split('!setrole ')[1];
-	const newRole = args.split(' ')[0]; // expecting args variable to be 'role username#1423' 
-	const userTargetObj = userMembership.getUser(args.split(' ')[1]);
-	if (allowedRoles.includes(newRole) && userTargetObj != null) {
-		// valid user and valid role
-		userMembership.setUserRole(userTargetObj, newRole)
-			.then((data) => {
-				message.reply('Successfully set role ' + newRole + ' for user ' + userTargetObj.user_id);
+	try {
+		const args = message.content.split('!setrole ')[1];
+		let newRole = '';
+		let username = '';
+		if (args.includes('user ')) {
+			newRole = 'user';
+			username = args.split('user ')[1];
+		}
+		else if (args.includes('voucher ')) {
+			newRole = 'voucher';
+			username = args.split('voucher ')[1];
+		}
+		else if (args.includes('superadmin ')) {
+			newRole = 'superadmin';
+			username = args.split('superadmin ')[1];
+		}
+		else if (args.includes('admin ')) {
+			newRole = 'admin';
+			username = args.split('admin ')[1];
+		}
+		commandHelper.getUserFromMentions(message)
+			.then((mentionedUsername) => {
+				if (mentionedUsername != null) {
+					// the method found a user in mentions
+					username = mentionedUsername;
+				}
+				const userTargetObj = userMembership.getUser(username);
+				if (allowedRoles.includes(newRole) && userTargetObj != null) {
+					// valid user and valid role
+					userMembership.setUserRole(userTargetObj, newRole)
+						.then((data) => {
+							message.reply('Successfully set role ' + newRole + ' for user ' + userTargetObj.user_id);
+						})
+						.catch((err) => {
+							message.reply("An error occurred trying to set role: " + newRole + " for user: " + userTargetObj.user_id + ". Please report this to meastoso");
+						});
+				}
+				else {
+					replyInvalidUsage(message);
+				}
 			})
 			.catch((err) => {
-				message.reply("An error occurred trying to set role: " + newRole + " for user: " + userTargetObj.user_id + ". Please report this to meastoso");
+				console.log(err);
+				logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
 			});
 	}
-	else {
+	catch(err) {
+		logger.log("ERROR", "Caught exception during setrole command:", err);
 		replyInvalidUsage(message);
 	}
 }
@@ -296,89 +358,191 @@ client.on('message', message => {
 			}
 		}
 		/*#########################################
+		 *      !stats
+		 #########################################*/
+		if (message.content.startsWith('!stats')) {			
+			try {
+				const authorTag = message.author.tag;
+				const userObjForDM = message.author;
+				commandHelper.getStats(authorTag, userObjForDM);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during ready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !teststats <user>
+		 #########################################*/
+		if (message.content.startsWith('!teststats ') && botConfig.isTestMode) {
+			try {
+				const username = message.content.split('!teststats ')[1];
+				const authorTag = username;
+				const userObjForDM = message.author;
+				commandHelper.getStats(authorTag, userObjForDM);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during testready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !leave
+		 #########################################*/
+		if (message.content.startsWith('!leave')) {			
+			try {
+				const authorTag = message.author.tag;
+				const userObjForDM = message.author;
+				commandHelper.leaveQueue(message, authorTag);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during ready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !testleave <user>
+		 #########################################*/
+		if (message.content.startsWith('!testleave ') && botConfig.isTestMode) {
+			try {
+				const username = message.content.split('!testleave ')[1];
+				const authorTag = username;
+				const userObjForDM = message.author;
+				commandHelper.leaveQueue(message, authorTag);
+			}
+			catch(err) {
+				logger.log("ERROR", "Caught exception during testready command:", err);
+				replyInvalidUsage(message);
+			}
+		}
+		/*#########################################
+		 *      !showqueue
+		 #########################################*/
+		if (message.content.startsWith('!showqueue') && commandHelper.isNotDM(message)) {			
+			const requiredRole = 'user';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				message.reply(queueManager.getQueueFriendly(message.channel.name));
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "leave");
+			}
+		}
+		/*#########################################
+		 *      !joinspec
+		 #########################################*/
+		if (message.content.startsWith('!joinspec') && commandHelper.isNotDM(message)) {			
+			const requiredRole = 'user';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				if (queueManager.isUserInSpecQueue(message.author.tag, message.channel.name)) {
+					message.reply('user ' + message.author.tag + ' is already in the spectator queue for this datacenter');
+				}
+				else {
+					if (!queueManager.joinSpectator(message, message.author.tag, message.author.id, client)) {
+						message.reply('this command can only be used from a queue-channel');
+					}
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "joinspec");
+			}
+		}
+		/*#########################################
 		 *      !vouch <user>
 		 #########################################*/
 		if (message.content.startsWith('!vouch ')) {
 			const requiredRole = 'voucher';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
-					const username = message.content.split('!vouch ')[1];
-					if (userMembership.isUser(username)) {
-						if(userMembership.isUserVouched(username)) {
-							console.log('vouched!');
-							if(userMembership.isUserApproved(username)) {
-								console.log(message.author.tag + ' attempted to vouch user ' + username + ' but user has already been approved.');
-								message.reply('User ' + username + ' already exists in the league.');
+					let username = message.content.split('!vouch ')[1];
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
 							}
-							else {
-								console.log(message.author.tag + ' attempted to vouch user ' + username + ' but user has been vouched but is awaiting admin approvel.');
-								message.reply('User ' + username + ' has already been vouched but requires admin approval.');
-							}
-						}
-						else {
-							const userObj = userMembership.getUser(username); // assume not null since isUser passed
-							if (userObj.user_role == 'waiting' && userObj.vouchers != null && (userObj.vouchers != message.author.tag || botConfig.isTestMode())) {
-							//if (userObj.user_role == 'waiting' && userObj.vouchers != null) { // THIS IS FOR SELF TESTING!
-								//  set vouched = 1 and if requiredAdminApproval = false then set approved = 1 and approvers = 'auto-approved'
-								userMembership.finalizeVouch(userObj, message.author.tag)
-									.then((data) => {
-										if (botConfig.isVouchApprovalRequired()) {
-											message.reply('User ' + username + ' has now been vouched but requires admin approval.');
-										}
-										else {
-											message.reply('Successfully added user ' + username + ' as vouched and approved with role: user to KIHL.');
-										}
-									})
-									.catch((err) => {
+							if (userMembership.isUser(username)) {
+								if(userMembership.isUserVouched(username)) {
+									console.log('vouched!');
+									if(userMembership.isUserApproved(username)) {
+										console.log(message.author.tag + ' attempted to vouch user ' + username + ' but user has already been approved.');
+										message.reply('User ' + username + ' already exists in the league.');
+									}
+									else {
+										console.log(message.author.tag + ' attempted to vouch user ' + username + ' but user has been vouched but is awaiting admin approvel.');
+										message.reply('User ' + username + ' has already been vouched but requires admin approval.');
+									}
+								}
+								else {
+									const userObj = userMembership.getUser(username); // assume not null since isUser passed
+									if (userObj.user_role == 'waiting' && userObj.vouchers != null && (userObj.vouchers != message.author.tag || botConfig.isTestMode())) {
+									//if (userObj.user_role == 'waiting' && userObj.vouchers != null) { // THIS IS FOR SELF TESTING!
+										//  set vouched = 1 and if requiredAdminApproval = false then set approved = 1 and approvers = 'auto-approved'
+										userMembership.finalizeVouch(userObj, message.author.tag)
+											.then((data) => {
+												if (botConfig.isVouchApprovalRequired()) {
+													message.reply('User ' + username + ' has now been vouched but requires admin approval.');
+												}
+												else {
+													message.reply('Successfully added user ' + username + ' as vouched and approved with role: user to KIC.');
+												}
+											})
+											.catch((err) => {
+												message.reply('Failed to vouch user ' + username + '. Please contact meastoso with the timestamp of this message.');
+											});
+									}
+									else {
+										// something terrible happened or someone tried to vouch same person twice, log as much as possible and report error to user
 										message.reply('Failed to vouch user ' + username + '. Please contact meastoso with the timestamp of this message.');
-									});
+									}
+								}
 							}
-							else {
-								// something terrible happened or someone tried to vouch same person twice, log as much as possible and report error to user
-								message.reply('Failed to vouch user ' + username + '. Please contact meastoso with the timestamp of this message.');
+							else { // user does not exist yet
+								if (userMembership.isUserAdmin(message.author.tag)) {
+									// since an admin is vouching, automatically set vouched and approved to true and set role to 'user'
+									// add admin to vouchers and approvers list
+									const authorTag = username;
+									const role = 'user';
+									const vouched = true;
+									const approved = true;
+									const vouchers = message.author.tag;
+									const approvers = message.author.tag;
+									const approval_date = (new Date()).toISOString();
+									userMembership.createNewUser(authorTag, role, vouched, approved, vouchers, approvers, approval_date)
+										.then((data) => {
+											message.reply('Successfully added user ' + username + ' as vouched and approved with role: user to KIC.');
+										})
+										.catch((err) => {
+											logger.log("ERROR", "Failed to create new user as an admin, exception:", err);
+											message.reply('Failed to add user ' + username + ' as an admin. Please contact meastoso with the timestamp of this message.');
+										});
+								}
+								else {
+									// since this is just a voucher set vouched and approved to false and set role to 'waiting'
+									// set approvers to 'none' and set vouchers list to this user only (so far)
+									const authorTag = username;
+									const role = 'waiting';
+									const vouched = false;
+									const approved = false;
+									const vouchers = message.author.tag;
+									const approvers = 'none'; // this is bad but dynamo won't allow empty strings
+									const approval_date = 'none'; // this is bad but dynamo won't allow empty strings
+									userMembership.createNewUser(authorTag, role, vouched, approved, vouchers, approvers, approval_date)
+										.then((data) => {
+											message.reply('Successfully vouched user ' + username + '. One more vouch is required to be approved for the KIC.');
+										})
+										.catch((err) => {
+											logger.log("ERROR", "Failed to create new user as a voucher, exception:", err);
+											message.reply('Failed to add user ' + username + ' as a voucher. Please contact meastoso with the timestamp of this message.');
+										});
+								}
 							}
-						}
-					}
-					else { // user does not exist yet
-						if (userMembership.isUserAdmin(message.author.tag)) {
-							// since an admin is vouching, automatically set vouched and approved to true and set role to 'user'
-							// add admin to vouchers and approvers list
-							const authorTag = username;
-							const role = 'user';
-							const vouched = true;
-							const approved = true;
-							const vouchers = message.author.tag;
-							const approvers = message.author.tag;
-							const approval_date = (new Date()).toISOString();
-							userMembership.createNewUser(authorTag, role, vouched, approved, vouchers, approvers, approval_date)
-								.then((data) => {
-									message.reply('Successfully added user ' + username + ' as vouched and approved with role: user to KIHL.');
-								})
-								.catch((err) => {
-									logger.log("ERROR", "Failed to create new user as an admin, exception:", err);
-									message.reply('Failed to add user ' + username + ' as an admin. Please contact meastoso with the timestamp of this message.');
-								});
-						}
-						else {
-							// since this is just a voucher set vouched and approved to false and set role to 'waiting'
-							// set approvers to 'none' and set vouchers list to this user only (so far)
-							const authorTag = username;
-							const role = 'waiting';
-							const vouched = false;
-							const approved = false;
-							const vouchers = message.author.tag;
-							const approvers = 'none'; // this is bad but dynamo won't allow empty strings
-							const approval_date = 'none'; // this is bad but dynamo won't allow empty strings
-							userMembership.createNewUser(authorTag, role, vouched, approved, vouchers, approvers, approval_date)
-								.then((data) => {
-									message.reply('Successfully vouched user ' + username + '. One more vouch is required to be approved for the KIHL.');
-								})
-								.catch((err) => {
-									logger.log("ERROR", "Failed to create new user as a voucher, exception:", err);
-									message.reply('Failed to add user ' + username + ' as a voucher. Please contact meastoso with the timestamp of this message.');
-								});
-						}
-					}
+						})
+						.catch((err) => {
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+						});
 				}
 				catch(err) {
 					logger.log("ERROR", "Caught exception during vouch command:", err);
@@ -399,44 +563,75 @@ client.on('message', message => {
 				// admins and super admins can see basic user details
 				let messageText = '';
 				try {
-					const username = message.content.split('!data ')[1];
-					if (userMembership.isUser(username)) {
-						console.log('is user passed, getting object and creating text');
-						const userObj = userMembership.getUser(username);
-						messageText = userObj.user_id + ' has role ' + userObj.user_role + ', was first vouched ' + formatDate(userObj.creation_date) + ',';
-						if (userObj.approved == 1) {
-							messageText = messageText + ' fully vouched and approved ' + formatDate(userObj.approval_date) + ' with vouchers: ' + userObj.vouchers + ' and approvers: ' + userObj.approvers + ',';
-						}
-						else {
-							if (userObj.vouched == 1) {
-								messageText = messageText + ' and is fully vouched by ' + userObj.vouchers + ' but not approved by admins yet,';
+					let username = message.content.split('!data ')[1];
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
+							}
+							if (userMembership.isUser(username)) {
+								console.log('is user passed, getting object and creating text');
+								const userObj = userMembership.getUser(username);
+								messageText = userObj.user_id + ' has role ' + userObj.user_role + ', was first vouched ' + formatDate(userObj.creation_date) + ',';
+								if (userObj.approved == 1) {
+									messageText = messageText + ' fully vouched and approved ' + formatDate(userObj.approval_date) + ' with vouchers: ' + userObj.vouchers + ' and approvers: ' + userObj.approvers + ',';
+								}
+								else {
+									if (userObj.vouched == 1) {
+										messageText = messageText + ' and is fully vouched by ' + userObj.vouchers + ' but not approved by admins yet,';
+									}
+									else {
+										messageText = messageText + ' but requires one more vouch, current vouchers: ' + userObj.vouchers + ',';
+									}
+								}
+								if (userObj.banned == 1) {
+									messageText = messageText + ' User is banned from the league, ';
+								}
+								if (userMembership.isAuthorized(message.author.tag, 'superadmin')) {
+									// superadmins can see user stats in addition to basic data
+									// TODO
+									const player = userStats.getPlayer(username);
+									messageText = messageText + '\n' + commandHelper.formatUserStats(player);
+								}
+								// WHISPER THIS TO THE USER
+								message.author.createDM()
+									.then((dmChannel) => {
+										dmChannel.send(messageText);
+									})
+									.catch((err) => {
+										console.log(err);
+									});
 							}
 							else {
-								messageText = messageText + ' but requires one more vouch, current vouchers: ' + userObj.vouchers + ',';
-							}
-						}
-						if (userObj.banned == 1) {
-							messageText = messageText + ' User is banned from the league, ';
-						}
-					}
-					else {
-						message.reply('User ' + username + ' does not exist.');
-					}
+								message.reply('User ' + username + ' does not exist.');
+							}							
+						})
+						.catch((err) => {
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+						});
 				}
 				catch(err) {
 					logger.log("ERROR", "Error trying to format user data, exception:", err);
 					replyInvalidUsage(message);
 				}
-				if (userMembership.isAuthorized(message.author.tag, 'superadmin')) {
-					// superadmins can see user stats in addition to basic data
-					// TODO
-					
-					
-				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "data");
+			}
+		}
+		/*#########################################
+		 *      !queueinfo
+		 #########################################*/
+		if (message.content.startsWith('!queueinfo')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				// WHISPER THIS TO THE USER
 				message.author.createDM()
 					.then((dmChannel) => {
-						dmChannel.send(messageText);
+						dmChannel.send(queueManager.getQueueFriendlyAdmin(message.channel.name));
 					})
 					.catch((err) => {
 						console.log(err);
@@ -444,7 +639,57 @@ client.on('message', message => {
 			}
 			else {
 				replyUnauthorized(message, requiredRole);
-				logger.logUnauthorized(message.author, requiredRole, "data");
+				logger.logUnauthorized(message.author, requiredRole, "queueinfo");
+			}
+		}
+		/*#########################################
+		 *      !remove <user>
+		 #########################################*/
+		if (message.content.startsWith('!remove ')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				try {
+					let username = message.content.split('!remove ')[1];
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
+							}
+							// same logic as !testleave
+							commandHelper.leaveQueue(message, username);
+						})
+						.catch((err) => {
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+						});
+				}
+				catch(err) {
+					logger.log("ERROR", "Error trying to remove user from queues, exception:", err);
+					replyInvalidUsage(message);
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "remove");
+			}
+		}
+		/*#########################################
+		 *      !clear
+		 #########################################*/
+		if (message.content.startsWith('!clear')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				if (queueManager.clearQueue(message.channel.name)) {
+					message.reply('the queue for this channel has been completely cleared.')
+				}
+				else {
+					message.reply('please use this command within a queue channel.')
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "clear");
 			}
 		}
 		/*#########################################
@@ -486,25 +731,36 @@ client.on('message', message => {
 			const requiredRole = 'admin';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
-					const username = message.content.split('!approve ')[1];
-					if (userMembership.isUser(username)) {
-						if (userMembership.needsApproval(username)) {
-							userMembership.approveUser(message.author.tag, username)
-								.then((data) => {
-									message.reply("user " + username + " has been approved!");
-								})
-								.catch((err) => {
-									logger.log("ERROR", "Error trying to approve user " + username + ", exception:", err);
-									message.reply('Failed to approve user ' + username + '. Please contact meastoso with the timestamp of this message.');
-								});
-						}
-						else {
-							message.reply(username + ' does not require approval at this time.');
-						}
-					}
-					else {
-						message.reply(username + ' is not a valid user.');
-					}
+					let username = message.content.split('!approve ')[1];
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
+							}
+							if (userMembership.isUser(username)) {
+								if (userMembership.needsApproval(username)) {
+									userMembership.approveUser(message.author.tag, username)
+										.then((data) => {
+											message.reply("user " + username + " has been approved!");
+										})
+										.catch((err) => {
+											logger.log("ERROR", "Error trying to approve user " + username + ", exception:", err);
+											message.reply('Failed to approve user ' + username + '. Please contact meastoso with the timestamp of this message.');
+										});
+								}
+								else {
+									message.reply(username + ' does not require approval at this time.');
+								}
+							}
+							else {
+								message.reply(username + ' is not a valid user.');
+							}
+						})
+						.catch((err) => {
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+						});
 				}
 				catch(err) {
 					logger.log("ERROR", "Error trying to get users role, exception:", err);
@@ -523,15 +779,26 @@ client.on('message', message => {
 			const requiredRole = 'user';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
-					const username = message.content.split('!role ')[1];
-					if (userMembership.isUser(username)) {
-						const userObj = userMembership.getUser(username);
-						const user_role = userObj.user_role;
-						message.reply(username + ' has the role ' + user_role);
-					}
-					else {
-						message.reply(username + ' is not a valid user.');
-					}
+					let username = message.content.split('!role ')[1];
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
+							}
+							if (userMembership.isUser(username)) {
+								const userObj = userMembership.getUser(username);
+								const user_role = userObj.user_role;
+								message.reply(username + ' has the role ' + user_role);
+							}
+							else {
+								message.reply(username + ' is not a valid user.');
+							}
+						})
+						.catch((err) => {
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+						});
 				}
 				catch(err) {
 					logger.log("ERROR", "Error trying to get users role, exception:", err);
@@ -547,18 +814,29 @@ client.on('message', message => {
 		 *      !ban <user> <reason>
 		 #########################################*/
 		if (message.content.startsWith('!ban ')) {
-			const requiredRole = 'user';
+			const requiredRole = 'admin';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				try {
-					const username = message.content.split('!ban ')[1];
-					userMembership.banUser(username)
-						.then((data) => {
-							message.reply("User " + username + " has been banned from KIHL.");
-							// TODO: add entry to audit system
+					let username = message.content.split('!ban ')[1];
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
+							}
+							userMembership.banUser(username)
+								.then((data) => {
+									message.reply("User " + username + " has been banned from KIC.");
+									// TODO: add entry to audit system
+								})
+								.catch((err) => {
+									logger.log("ERROR", "Error trying to format user data, exception:", err);
+									replyInvalidUsage(message);
+								});
 						})
 						.catch((err) => {
-							logger.log("ERROR", "Error trying to format user data, exception:", err);
-							replyInvalidUsage(message);
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
 						});
 				}
 				catch(err) {
@@ -569,6 +847,73 @@ client.on('message', message => {
 			else {
 				replyUnauthorized(message, requiredRole);
 				logger.logUnauthorized(message.author, requiredRole, "data");
+			}
+		}
+		/*#########################################
+		 *      !timeout <mins> <user>
+		 #########################################*/
+		if (message.content.startsWith('!timeout ')) {
+			const requiredRole = 'admin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				try {
+					const args = message.content.split('!timeout ')[1];
+					const argsArr = args.split('');
+					if (!Number.isInteger(parseInt(argsArr[0], 10))) {
+						console.log('expected number for argsArr0 but found: ' + argsArr[0]);
+						replyInvalidUsage(message);
+						return;
+					}
+					let findingNumber = true;
+					let arrIndex = 1; // start at 1
+					let timeoutMinutes = argsArr[0];
+					while (findingNumber) {
+						if (argsArr[arrIndex] != ' ' && argsArr[arrIndex] != undefined) {
+							console.log('found char ' + argsArr[arrIndex] + ' at index ' + arrIndex);
+							timeoutMinutes = parseInt(args.substring(0, arrIndex+1), 10);
+							arrIndex++;
+						}
+						else {
+							console.log('found char ' + argsArr[arrIndex] + ' at index ' + arrIndex);
+							// finished parsing number, break out
+							findingNumber = false;
+						}
+					}
+					console.log('checking if ' + timeoutMinutes + ' is a number');
+					if (!Number.isInteger(timeoutMinutes)) {
+						console.log('timeoutMinutes ' + timeoutMinutes + ' is not an integer, failing');
+						replyInvalidUsage(message);
+						return;
+					}
+					console.log('finished parsing number, value is: ' + timeoutMinutes);
+					let username = args.substring(arrIndex+1, args.length);
+					console.log('i THINK username is: ' + username);
+					commandHelper.getUserFromMentions(message)
+						.then((mentionedUsername) => {
+							if (mentionedUsername != null) {
+								// the method found a user in mentions
+								username = mentionedUsername;
+							}
+							// now do logic with the arguments
+							queueManager.timeoutUser(username, timeoutMinutes);
+							
+							
+							
+							
+							
+						})
+						.catch((err) => {
+							console.log(err);
+							logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+						});
+				}
+				catch(err) {
+					logger.log("ERROR", "Error trying to parse timeout command, exception:", err);
+					replyInvalidUsage(message);
+				}
+			}
+			else {
+				replyUnauthorized(message, requiredRole);
+				logger.logUnauthorized(message.author, requiredRole, "timeout");
 			}
 		}
 		/*#########################################
@@ -662,11 +1007,25 @@ client.on('message', message => {
 		 *      !getuser <user> HIDDEN COMMAND SUPERADMIN
 		 #########################################*/
 		if (message.content.startsWith('!getuser ')) {
+			//console.log(message.author);
 			const requiredRole = 'superadmin';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
-				const username = message.content.split('!getuser ')[1];
-				const userTargetObj = userMembership.getUser(username);
-				message.reply("user: " + JSON.stringify(userTargetObj));
+				commandHelper.getUserFromMentions(message)
+					.then((username) => {
+						if (username == null) {
+							// the method did not find any users in mentions, parse username
+							username = message.cleanContent.split('!getuser ')[1];
+							console.log('this username is: ' + username);
+						}
+						console.log(username);
+						const userTargetObj = userMembership.getUser(username);
+						message.reply("user: " + JSON.stringify(userTargetObj));
+					})
+					.catch((err) => {
+						console.log(err);
+						logger.log('ERROR', 'Failed to try and get username from mentions, exception:', err);
+					});
+				console.log('finished here');
 			}
 			else {
 				console.log('not authorized');
@@ -692,7 +1051,7 @@ client.on('message', message => {
 		if (message.content.startsWith('!queues')) {
 			const requiredRole = 'superadmin';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
-				message.reply("queues\n: " + JSON.stringify(queueManager.getQueues()));
+				message.reply("queues\n: " + JSON.stringify(queueManager.getQueues()) + "\nspec\n: " + JSON.stringify(queueManager.getSpecQueues()));
 			}
 			else {
 				console.log('not authorized');

@@ -42,6 +42,7 @@ const queues = {
 // holds matches ready to go that are waiting for ready check, array of type finalMatchObjWrapper
 const readyCheckMatchQueue = [];
 const activeMatches = [];
+const spectatorQueue = [];
 
 /**
  * queuePlayerObj = {
@@ -54,16 +55,35 @@ const activeMatches = [];
  * 		'tankMMR': 1000,
  * 		'meleeMMR': 0,
  * 		'rangedMMR': 0
+ * 		'datacenter': 'primal'
  * 		'userDiscordId': 372371929836261
  * }
  * 
  */
+
+const timeoutUsersMap = {}; // stores user objects that indicate timeout
+/**
+ * timeoutPlayerObj = {
+ * 		'user_id': 'meastoso#3957',
+ * 		'timeoutMinutes': 120,
+ * 		'timeoutStar': #Date
+ * }
+ */
+
 // TODO: Can expand this to be for !joinrandom multiple roles
 function getQueuePlayerObj(playerName, userDiscordId, playerObj, datacenter, role) {
 	let queuePlayerObj = {};
 	queuePlayerObj['user_id'] = playerName;
 	queuePlayerObj[role] = 1;
 	queuePlayerObj[role + 'MMR'] = playerObj[role].mmrDatacenterMap[datacenter].rating;
+	queuePlayerObj['userDiscordId'] = userDiscordId;
+	queuePlayerObj['datacenter'] = datacenter;
+	return queuePlayerObj;
+}
+
+function getSpectatorPlayerObj(playerName, userDiscordId, datacenter) {
+	let queuePlayerObj = {};
+	queuePlayerObj['user_id'] = playerName;
 	queuePlayerObj['userDiscordId'] = userDiscordId;
 	queuePlayerObj['datacenter'] = datacenter;
 	return queuePlayerObj;
@@ -192,7 +212,7 @@ function removePlayersFromQueues(finalMatchObjWrapper) {
 	}
 }
 
-function removePlayerFromQueues(user_id) {
+const removePlayerFromQueues = function(user_id) {
 	for (let datacenter in queues) {
 		currQueue = queues[datacenter];
 		if (currQueue.length > 0) {
@@ -204,22 +224,23 @@ function removePlayerFromQueues(user_id) {
 			}
 		}
 	}
+	removeUserFromSpecQueue(user_id);
 }
 
 // don't need to get ready checks from spectators
 const sendReadyChecks = function(matchObj, discordClient) {
 	const finalMatchObj = sortMatch(matchObj);
 	finalMatchObj.claws.forEach(function(queuePlayerObj) {
-		//const userDiscordId = queuePlayerObj.userDiscordId;
-		const userDiscordId = '195033055512100864'; // meastoso discord ID
+		const userDiscordId = queuePlayerObj.userDiscordId;
+		//const userDiscordId = '195033055512100864'; // meastoso discord ID
 		const username = queuePlayerObj.user_id;
 		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
 		sendReadyCheckDM(userDiscordId, username, role, discordClient);
 	});
 	// Send DMs for fangs
 	finalMatchObj.fangs.forEach(function(queuePlayerObj) {
-		//const userDiscordId = queuePlayerObj.userDiscordId;
-		const userDiscordId = '195033055512100864'; // meastoso discord ID
+		const userDiscordId = queuePlayerObj.userDiscordId;
+		//const userDiscordId = '195033055512100864'; // meastoso discord ID
 		const username = queuePlayerObj.user_id;
 		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
 		sendReadyCheckDM(userDiscordId, username, role, discordClient);
@@ -279,8 +300,8 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 	const fangsAvgScore = finalMatchObj.fangsAvgScore;
 	// send DMs for !ready to claws team
 	finalMatchObj.claws.forEach(function(queuePlayerObj) {
-		//const userDiscordId = queuePlayerObj.userDiscordId;
-		const userDiscordId = '195033055512100864'; // meastoso discord ID
+		const userDiscordId = queuePlayerObj.userDiscordId;
+		//const userDiscordId = '195033055512100864'; // meastoso discord ID
 		const username = queuePlayerObj.user_id;
 		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
 		const teamName = 'Claws';
@@ -288,8 +309,8 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 	});
 	// Send DMs for fangs
 	finalMatchObj.fangs.forEach(function(queuePlayerObj) {
-		//const userDiscordId = queuePlayerObj.userDiscordId;
-		const userDiscordId = '195033055512100864'; // meastoso discord ID
+		const userDiscordId = queuePlayerObj.userDiscordId;
+		//const userDiscordId = '195033055512100864'; // meastoso discord ID
 		const username = queuePlayerObj.user_id;
 		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
 		const teamName = 'Fangs';
@@ -300,7 +321,7 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 		//const userDiscordId = queuePlayerObj.userDiscordId;
 		const userDiscordId = '195033055512100864'; // meastoso discord ID
 		const username = queuePlayerObj.user_id;
-		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
+		const role = 'Spectator';
 		const teamName = 'Spectator';
 		sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName);
 	});
@@ -453,6 +474,8 @@ const checkMatchReady = function(finalMatchObjWrapper, discordClient) {
 	}
 	if (allConfirmed) {
 		console.log('all confirmed ready for match!');
+		// add spectators to finalMatchObjWrapper
+		addSpectatorsToMatch(finalMatchObjWrapper);
 		startMatch(finalMatchObjWrapper, discordClient);
 		removeMatchFromReadyCheckMatchQueueByUser(single_user);
 	}
@@ -460,6 +483,54 @@ const checkMatchReady = function(finalMatchObjWrapper, discordClient) {
 		console.log('not all confirmed ready!');
 	}
 }
+
+function addSpectatorsToMatch(finalMatchObjWrapper) {
+	const datacenter = finalMatchObjWrapper.finalMatchObj.claws[0].datacenter;
+	let specArr = [];
+	let numSpecs = 0;
+	for (let i = 0; i < spectatorQueue.length; i++) {
+		if (spectatorQueue[i].datacenter == datacenter && numSpecs < 8) {
+			// found a player in spectator queue matching this match's datacenter
+			specArr.push(spectatorQueue[i]);
+			numSpecs++;
+		}
+	}
+	finalMatchObjWrapper.finalMatchObj['specs'] = specArr;
+	removeSpectatorsFromSpecQueue(specArr, datacenter);
+}
+
+function removeSpectatorsFromSpecQueue(specArr) {
+	for (let i = 0; i < specArr.length; i++) {
+		removeUserFromSpecQueue(specArr[i].user_id);
+	}
+}
+
+// remove a specific user from all spec queues (all datacenters)
+function removeUserFromSpecQueue(user_id) {
+	let i = spectatorQueue.length;
+	while (i--) { // iterate backwards because there could be same user in spectator queue for multi datacenters
+		if (spectatorQueue[i].user_id == user_id) {
+			spectatorQueue.splice(i, 1);
+		}
+	}
+}
+
+/**
+ * queuePlayerObj = {
+ * 		'user_id': 'meastoso#3957',
+ * 		'healer': 1,
+ * 		'tank': 1,
+ * 		'melee': 0,
+ * 		'ranged': 0,
+ * 		'healerMMR': 1320,
+ * 		'tankMMR': 1000,
+ * 		'meleeMMR': 0,
+ * 		'rangedMMR': 0
+ * 		'datacenter': 'primal'
+ * 		'userDiscordId': 372371929836261
+ * }
+ * 
+ */
 
 function removeMatchFromReadyCheckMatchQueueByUser(username) {
 	for (let i = 0; i < readyCheckMatchQueue.length; i++) {
@@ -604,6 +675,167 @@ const getMatches = function() {
 	return activeMatches;
 }
 
+// returns friendly text about missing roles to make a match
+const getQueueFriendly = function(channelName) {
+	const datacenter = getDatacenterFromDiscordChannel(channelName);
+	if (datacenter == null) {
+		return " please use this command in a queue channel";
+	}
+	else {
+		m = "Missing Roles: ";
+		const q = queues[datacenter];
+		let healerArr = [];
+		let tankArr = [];
+		let meleeArr = [];
+		let rangedArr = [];
+		for (let i = 0; i < q.length; i++) {
+			if (q[i].healer) {
+				healerArr.push(q[i]);
+			}
+			else if (q[i].tank) {
+				tankArr.push(q[i]);
+			}
+			else if (q[i].melee) {
+				meleeArr.push(q[i]);
+			}
+			else if (q[i].ranged) {
+				rangedArr.push(q[i]);
+			}
+		}
+		if (healerArr.length == 0) {
+			m = m + "Healer(2) - ";
+		}
+		if (healerArr.length == 1) {
+			m = m + "Healer(1) - ";
+		}
+		if (tankArr.length == 0) {
+			m = m + "Tank(2) - ";
+		}
+		if (tankArr.length == 1) {
+			m = m + "Tank(1) - ";
+		}
+		if (meleeArr.length == 0) {
+			m = m + "Melee(2) - ";
+		}
+		if (meleeArr.length == 1) {
+			m = m + "Melee(1) - ";
+		}
+		if (rangedArr.length == 0) {
+			m = m + "Ranged(2)";
+		}
+		if (rangedArr.length == 1) {
+			m = m + "Ranged(1)";
+		}
+		return m;
+	}
+}
+
+const getQueueFriendlyAdmin = function(channelName) {
+	const datacenter = getDatacenterFromDiscordChannel(channelName);
+	if (datacenter == null) {
+		return " please use this command in a queue channel";
+	}
+	else {
+		const q = queues[datacenter];
+		let m = "The " + datacenter + " queue has " + q.length + " players:";
+		let healerArr = [];
+		let tankArr = [];
+		let meleeArr = [];
+		let rangedArr = [];
+		for (let i = 0; i < q.length; i++) {
+			if (q[i].healer) {
+				healerArr.push(q[i]);
+			}
+			else if (q[i].tank) {
+				tankArr.push(q[i]);
+			}
+			else if (q[i].melee) {
+				meleeArr.push(q[i]);
+			}
+			else if (q[i].ranged) {
+				rangedArr.push(q[i]);
+			}
+		}
+		m = m + "\nHealer(" + healerArr.length + "): "; 
+		for (let i = 0; i < healerArr.length; i++) {
+			if (i != 0) {
+				m = m + ", "; // add comma before each element but first
+			}
+			m = m + healerArr[i].user_id;
+		}
+		m = m + "\nTank(" + tankArr.length + "): "; 
+		for (let i = 0; i < tankArr.length; i++) {
+			if (i != 0) {
+				m = m + ", "; // add comma before each element but first
+			}
+			m = m + tankArr[i].user_id;
+		}
+		m = m + "\nMelee(" + meleeArr.length + "): "; 
+		for (let i = 0; i < meleeArr.length; i++) {
+			if (i != 0) {
+				m = m + ", "; // add comma before each element but first
+			}
+			m = m + meleeArr[i].user_id;
+		}
+		m = m + "\nRanged(" + rangedArr.length + "): "; 
+		for (let i = 0; i < rangedArr.length; i++) {
+			if (i != 0) {
+				m = m + ", "; // add comma before each element but first
+			}
+			m = m + rangedArr[i].user_id;
+		}
+		return m;
+	}
+}
+
+// return true if success, false if fail
+const clearQueue = function(channelName) {
+	const datacenter = getDatacenterFromDiscordChannel(channelName);
+	if (datacenter == null) {
+		return false;
+	}
+	else {
+		queues[datacenter] = []; // empty queue
+		return true;
+	}
+}
+
+// Add user to spectatorQueue
+const joinSpectator = function(message, playerName, userDiscordId, client) {
+	const datacenter = getDatacenterFromDiscordChannel(message.channel.name);
+	if (datacenter == null) {
+		return false;
+	}
+	else {
+		const specPlayerObj = getSpectatorPlayerObj(playerName, userDiscordId, datacenter);
+		spectatorQueue.push(specPlayerObj);
+		return true;
+	}
+}
+
+const getSpecQueues = function() {
+	return spectatorQueue;
+}
+
+const isUserInSpecQueue = function(username, channelName) {
+	const datacenter = getDatacenterFromDiscordChannel(channelName);
+	if (datacenter == null) {
+		return false;
+	}
+	else {
+		for (let i = 0; i < spectatorQueue.length; i++) {
+			if (spectatorQueue[i].user_id == username && spectatorQueue[i].datacenter == datacenter) {
+				return true; // found this user in this datacenter queue				
+			}
+		}
+	}
+	return false; // default false, not in queue
+}
+
+const timeoutUser = function(username, timeoutMinutes) {
+	
+}
+
 module.exports = {
 		addPlayerToQueue: addPlayerToQueue,
 		checkForMatch: checkForMatch,
@@ -619,5 +851,13 @@ module.exports = {
 		reportMatch: reportMatch,
 		isUserInGameUnreported: isUserInGameUnreported,
 		checkMatchCompleteWithUser: checkMatchCompleteWithUser,
-		getMatches: getMatches
+		getMatches: getMatches,
+		removePlayerFromQueues: removePlayerFromQueues,
+		getQueueFriendly: getQueueFriendly,
+		getQueueFriendlyAdmin: getQueueFriendlyAdmin,
+		clearQueue: clearQueue,
+		joinSpectator: joinSpectator,
+		getSpecQueues: getSpecQueues,
+		isUserInSpecQueue: isUserInSpecQueue,
+		timeoutUser: timeoutUser
 }

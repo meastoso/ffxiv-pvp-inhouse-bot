@@ -90,16 +90,22 @@ const updatePlayerMMRMatchComplete = function(user_id, user_role, datacenter, wi
 	return new Promise((resolve, reject) => {
 		let player = getPlayer(user_id);
 		let newMMR = parseInt(player[user_role].mmrDatacenterMap[datacenter].rating);
+		let newTotalGames = parseInt(player[user_role].mmrDatacenterMap[datacenter].total_games);
+		let newTotalWins = parseInt(player[user_role].mmrDatacenterMap[datacenter].total_won);
 		if (winBool) {
 			newMMR = newMMR + 25;
+			newTotalWins = newTotalWins + 1;
 		}
 		else {
 			newMMR = newMMR - 25;
 		}
-		userStatsDAO.updateMMR(user_id, user_role, datacenter, newMMR)
+		newTotalGames = newTotalGames + 1; // increment regardless of win
+		userStatsDAO.updateMMR(user_id, user_role, datacenter, newMMR, newTotalWins, newTotalGames)
 			.then((data) => {
 				// NOW UPDATE CACHE
 				userStatsCache[user_id][user_role].mmrDatacenterMap[datacenter].rating = newMMR;
+				userStatsCache[user_id][user_role].mmrDatacenterMap[datacenter].total_games = newTotalGames;
+				userStatsCache[user_id][user_role].mmrDatacenterMap[datacenter].total_won = newTotalWins;
 				resolve(data);
 			})
 			.catch((err) => {

@@ -53,7 +53,7 @@ const getUserStats = function(user_id, user_role) {
 	});
 }
 
-const updateMMR = function(user_id, user_role, datacenter, newMMR) {
+const updateMMR = function(user_id, user_role, datacenter, newMMR, newTotalWins, newTotalGames) {
 	return new Promise((resolve, reject) => {
 		// Update the item, unconditionally,
 		var params = {
@@ -62,9 +62,11 @@ const updateMMR = function(user_id, user_role, datacenter, newMMR) {
 		        "user_id": user_id,
 		        "user_role": user_role
 		    },
-		    UpdateExpression: "set mmrDatacenterMap." + datacenter + ".rating = :m",
+		    UpdateExpression: "set mmrDatacenterMap." + datacenter + ".rating = :m, mmrDatacenterMap." + datacenter + ".total_won = :tw, mmrDatacenterMap." + datacenter + ".total_games = :tg",
 		    ExpressionAttributeValues:{
-		        ":m":newMMR
+		        ":m":newMMR,
+		        ":tw":newTotalWins,
+		        ":tg":newTotalGames
 		    },
 		    ReturnValues:"UPDATED_NEW"
 		};

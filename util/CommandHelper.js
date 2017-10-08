@@ -10,7 +10,7 @@ const queueManager = require('../queue/QueueManager.js');
 
 
 
-function replyUnauthorized(message, requiredRole) {
+const replyUnauthorized = function(message, requiredRole) {
 	message.reply('You are unauthorized to use that command. Required role: ' + requiredRole);
 }
 
@@ -112,10 +112,80 @@ const reportMatch = function(message, authorTag, winBool) {
 	}
 }
 
+// returns user tag for the first mention
+const getUserFromMentions = function(message) {
+	return new Promise((resolve, reject) => {
+		message.mentions.users.forEach(function(element) {
+			resolve(element.tag);
+		});
+		resolve(null);
+	});
+}
+
+// Returns formatted string of user's stats
+const formatUserStats = function(userStatsPlayerObj) {
+	let ft = '';
+	for (let role in userStatsPlayerObj) {
+		for (let datacenter in userStatsPlayerObj[role].mmrDatacenterMap) {
+			const mmr = userStatsPlayerObj[role].mmrDatacenterMap[datacenter].rating;
+			const wr = getWinRate(userStatsPlayerObj[role].mmrDatacenterMap[datacenter]);
+			ft = ft + role + '  |  ' + datacenter + '  |  ' + mmr + ' (MMR)  |  ' + wr + '% winrate\n';
+		}
+	}
+	return ft;
+}
+
+function getWinRate(datacenterObj) {
+	if (datacenterObj.total_games == 0) {
+		return 0;
+	}
+	else {
+		return Math.round((datacenterObj.total_won/datacenterObj.total_games)*100);
+	}
+}
+
+const getStats = function(username, userObjForDM) {
+	const requiredRole = 'user';
+	if (userMembership.isAuthorized(username, requiredRole)) {
+		const player = userStats.getPlayer(username);
+		let messageText = 'Hello ' + username + ', here are your stats:';
+		messageText = messageText + '\n' + formatUserStats(player);
+		userObjForDM.createDM()
+			.then((dmChannel) => {
+				dmChannel.send(messageText);
+			})
+			.catch((err) => {
+				console.log(err);
+			});
+	}
+	else {
+		replyUnauthorized(message, requiredRole);
+		logger.logUnauthorized(message.author, requiredRole, "stats");
+	}
+}
+
+// removes specified user from all queues
+const leaveQueue = function(message, username) {
+	const requiredRole = 'user';
+	if (userMembership.isAuthorized(username, requiredRole)) {
+		queueManager.removePlayerFromQueues(username);
+		message.reply('user ' + username + ' has been removed from all queues.');
+	}
+	else {
+		replyUnauthorized(message, requiredRole);
+		logger.logUnauthorized(message.author, requiredRole, "leave");
+	}
+}
+
 module.exports = {
 		joinCommand: joinCommand,
 		isClass: isClass,
 		readyCommand: readyCommand,
 		isNotDM: isNotDM,
-		reportMatch: reportMatch
+		reportMatch: reportMatch,
+		replyUnauthorized: replyUnauthorized,
+		getUserFromMentions: getUserFromMentions,
+		formatUserStats: formatUserStats,
+		getStats: getStats,
+		leaveQueue: leaveQueue
 }
