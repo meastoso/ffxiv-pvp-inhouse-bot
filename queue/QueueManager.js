@@ -2,6 +2,7 @@
  * Queue Manager - manages all the queues
  */
 const userStats = require('../users/UserStats.js'); 
+const userMembership = require('../users/UserMembership.js');
 
 // NOTE: I want this to be an ENUM but because kisada can change channel names
 // Returns null if no discord channel is passed
@@ -62,13 +63,6 @@ const spectatorQueue = [];
  */
 
 const timeoutUsersMap = {}; // stores user objects that indicate timeout
-/**
- * timeoutPlayerObj = {
- * 		'user_id': 'meastoso#3957',
- * 		'timeoutMinutes': 120,
- * 		'timeoutStar': #Date
- * }
- */
 
 // TODO: Can expand this to be for !joinrandom multiple roles
 function getQueuePlayerObj(playerName, userDiscordId, playerObj, datacenter, role) {
@@ -88,6 +82,22 @@ function getSpectatorPlayerObj(playerName, userDiscordId, datacenter) {
 	queuePlayerObj['datacenter'] = datacenter;
 	return queuePlayerObj;
 }
+
+function getTimeoutUserObj(playerName, timeoutMinutes) {
+	let timeoutUserObj = {};
+	timeoutUserObj['user_id'] = playerName;
+	timeoutUserObj['timeoutMinutes'] = timeoutMinutes;
+	timeoutUserObj['timeoutStart'] = (new Date());
+	return timeoutUserObj;
+}
+
+/**
+ * timeoutPlayerObj = {
+ * 		'user_id': 'meastoso#3957',
+ * 		'timeoutMinutes': 120,
+ * 		'timeoutStar': #Date
+ * }
+ */
 
 // match role is 'healer, 'tank', 'melee', 'ranged'
 const addPlayerToQueue = function(userName, userDiscordId, discordChannelName, matchRole) {
@@ -298,6 +308,7 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 	const randomPassword = Math.floor(1000 + Math.random() * 9000);
 	const clawsAvgScore = finalMatchObj.clawsAvgScore;
 	const fangsAvgScore = finalMatchObj.fangsAvgScore;
+	const matchAdminPlayerObj = getMatchAdmin(finalMatchObj);
 	// send DMs for !ready to claws team
 	finalMatchObj.claws.forEach(function(queuePlayerObj) {
 		const userDiscordId = queuePlayerObj.userDiscordId;
@@ -363,15 +374,31 @@ function getRoleFromQueryPlayerObj(queryPlayerObj) {
 	}
 }
 
+function getMMRFromQueuePlayerObj(queuePlayerObj) {
+	if (queuePlayerObj.healer) {
+		return queuePlayerObj.healerMMR;
+	}
+	else if (queuePlayerObj.tank) {
+		return queuePlayerObj.tankMMR;
+	}
+	else if (queuePlayerObj.melee) {
+		return queuePlayerObj.meleeMMR;
+	}
+	else if (queuePlayerObj.ranged) {
+		return queuePlayerObj.rangedMMR;
+	}
+}
+
 // returns claws, fangs and specs
 function sortMatch(matchObj) {
-	let claws = [];
-	let clawsAvgScore = 0;
-	let fangs = [];
-	let fangsAvgScore = 0;
+	let team1Best = [];
+	let team1ScoreBest = 0;
+	let team2Best = [];
+	let team2ScoreBest = 0;
 	let specs = [];
 	// this is gross but i can't figure out a better way LELELEL...
 	let bestDiff = 5000;
+	let matchAdmin = {};
 	for (let h = 0; h < 2; h++) {
 		for (let t = 0; t < 2; t++) {
 			for (let m = 0; m < 2; m++) {
@@ -384,13 +411,35 @@ function sortMatch(matchObj) {
 					if (teamScoreDiff < bestDiff) {
 						console.log('found better teamscore of: ' + teamScoreDiff);
 						bestDiff = teamScoreDiff;
-						claws = team1;
-						clawsAvgScore = Math.round(team1Score/4);
-						fangs = team2;
-						fangsAvgScore = Math.round(team2Score/4);
+						team1Best = team1;
+						team1ScoreBest = Math.round(team1Score/4);
+						team2Best = team2;
+						team2ScoreBest = Math.round(team2Score/4);
 					}
 				}	
 			}	
+		}
+	}
+	const finalMatchObj = constructFinalMatchObj(team1Best, team1ScoreBest, team2Best, team2ScoreBest);
+	return finalMatchObj;
+}
+
+// function which returns finalMatchObj after figuring out which team 
+// needs to be claws and who the match-admin is
+function constructFinalMatchObj(team1, team2, team1Score, team2Score) {
+	const allPlayers = team1.concat(team2);
+	let matchAdmin = allPlayers[0];
+	//let bestRole = getRoleFromQueryPlayerObj(allPlayers[0]);
+	//let bestMMR = getMMRFromQueuePlayerObj(allPlayers[0]);
+	for (let i = 1; i < allPlayers.length; i++) {
+		const player = allPlayers[i];
+		if (isUserMembershipRoleBetter(matchAdmin, player)) {
+			// role is better, replace match admin
+			matchAdmin = player;
+		}
+		else if (isMMRBetter(matchAdmin, player)) {
+			// MMR is better, replace match admin
+			matchAdmin = player;
 		}
 	}
 	const finalMatchObj = {
@@ -398,9 +447,27 @@ function sortMatch(matchObj) {
 			'clawsAvgScore': clawsAvgScore,
 			'fangs': fangs,
 			'fangsAvgScore': fangsAvgScore,
-			'specs': specs
+			'specs': specs,
+			'matchAdmin': matchAdmin
 	}
 	return finalMatchObj;
+}
+
+// returns true if player2 is better than player 1
+function isUserMembershipRoleBetter(player1, player2) {
+	const player1Role = userMembership.getUser(player1).user_role;
+	const player2Role = userMembership.getUser(player2).user_role;
+	if (player1Role == 'superadmin') {
+		return false;
+	}
+	else if (player1Role == 'admin') {
+		
+	}
+}
+
+// returns true if player2 is better than player 1
+function isMMRBetter(player1, player2) {
+	
 }
 
 function getTeamScore(teamArr) {
@@ -833,8 +900,41 @@ const isUserInSpecQueue = function(username, channelName) {
 }
 
 const timeoutUser = function(username, timeoutMinutes) {
-	
+	// unconditionally add user to timeoutUserMap
+	const timeoutUserObj = getTimeoutUserObj(username, timeoutMinutes);
+	timeoutUsersMap[username] = timeoutUserObj;
 }
+
+// Returns true if the user is timedout, false if not
+const isUserTimedOut = function(username) {
+	const timeoutUserObj = timeoutUsersMap[username];
+	if (timeoutUserObj == undefined || timeoutUserObj == null) {
+		return false;
+	}
+	// user exists in the timeout table, check if timeout has expired
+	const expirationDate = addMinutes(timeoutUserObj.timeoutStart, timeoutUserObj.timeoutMinutes);
+	if ((new Date()) > expirationDate) {
+		// timeout has expired, remove from timeout map and return false
+		delete timeoutUsersMap[username];
+		return false;
+	}
+	else {
+		// user is still timedout
+		return true;
+	}
+}
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes*60000);
+}
+
+/**
+ * timeoutPlayerObj = {
+ * 		'user_id': 'meastoso#3957',
+ * 		'timeoutMinutes': 120,
+ * 		'timeoutStart': #Date
+ * }
+ */
 
 module.exports = {
 		addPlayerToQueue: addPlayerToQueue,
@@ -859,5 +959,6 @@ module.exports = {
 		joinSpectator: joinSpectator,
 		getSpecQueues: getSpecQueues,
 		isUserInSpecQueue: isUserInSpecQueue,
-		timeoutUser: timeoutUser
+		timeoutUser: timeoutUser,
+		isUserTimedOut: isUserTimedOut
 }

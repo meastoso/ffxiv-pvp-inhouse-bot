@@ -11,7 +11,7 @@ const queueManager = require('../queue/QueueManager.js');
 
 
 const replyUnauthorized = function(message, requiredRole) {
-	message.reply('You are unauthorized to use that command. Required role: ' + requiredRole);
+	message.reply('You are unauthorized to use that command. You may be timed-out or missing the required role: ' + requiredRole);
 }
 
 // called from !join and !testjoin

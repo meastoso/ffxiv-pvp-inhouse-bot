@@ -67,7 +67,7 @@ client.on('ready', () => {
  * 				NOTE: Spectator queue is affected by !leave and !remove as well as match-starting events
  * 
  *  * Change Log deployed xxxx PM EST
- * 		- NEW: 
+ * 		- NEW: added admin command !timeout <mins> <user>
  */
 
 // Helper function to reply when someone is unauthorized
@@ -865,7 +865,7 @@ client.on('message', message => {
 					}
 					let findingNumber = true;
 					let arrIndex = 1; // start at 1
-					let timeoutMinutes = argsArr[0];
+					let timeoutMinutes = parseInt(argsArr[0]);
 					while (findingNumber) {
 						if (argsArr[arrIndex] != ' ' && argsArr[arrIndex] != undefined) {
 							console.log('found char ' + argsArr[arrIndex] + ' at index ' + arrIndex);

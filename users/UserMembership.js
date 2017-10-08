@@ -1,5 +1,6 @@
 const userMembershipDAO = require('../dynamo/UserMembershipDAO.js');
 const botConfig = require('../s3/BotConfig.js');
+const queueManager = require('../queue/QueueManager.js');
 
 let userMembershipCache = {};
 
@@ -30,6 +31,10 @@ const getUser = function(authorTag) {
 // Boolean method returns true if the user meets or exceeds required role
 const isAuthorized = function(authorTag, requiredRole) {
 	if (authorTag == 'meastoso#3957') return true; // Need this for testing
+	if (queueManager.isUserTimedOut(authorTag)) {
+		console.log('user is timed out in authorize method!');
+		return false;
+	}
 	const userObj = getUser(authorTag);
 	if (userObj !== undefined && userObj !== null) {
 		if (userObj.banned == 1) return false;
