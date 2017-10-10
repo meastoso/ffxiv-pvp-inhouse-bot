@@ -8,8 +8,8 @@ const logger = require('./logging/logger.js');
 const commandHelper = require('./util/CommandHelper.js');
 const queueManager = require('./queue/QueueManager.js');
 
-//const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
-const botAppID = 'MzY2MDkyNjY0ODQxNjk5MzMw.DLn2LQ.udWvmeDU8YvEVt-JC7uLmW1wIs8'; // THIS IS DEV BOT
+const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
+//const botAppID = 'MzY2MDkyNjY0ODQxNjk5MzMw.DLn2LQ.udWvmeDU8YvEVt-JC7uLmW1wIs8'; // THIS IS DEV BOT
 
 const availableRoles = ['superadmin', 'admin', 'voucher', 'user'];
 
@@ -88,6 +88,12 @@ client.on('ready', () => {
  *  	- FIXED: Added the name of the datacenter in readycheck and matchdetails PMs
  *  	- FIXED: Added a confirmation response for !ready and !joinspec
  *  	- FIXED: !showqueue now returns "NONE! Readying match..." when the queue is filled and this command is run
+ *  
+Deployed Updated version of the bot, changelog here:
+ *  Change Log deployed 10/9/2017 @ 11:15 PM EST
+ *  	- FIXED: Players could join spectator queue and regular queue at same time
+ *  	- UPDATED: !showqueue has now become !showq
+ *  	- NOTICE: ALL DATA HAS BEEN WIPED FROM DATABASE. ALL ADMINS, VOUCHERS AND USERS MUST BE RE-VOUCHED AND SETROLE
  */
 
 // Helper function to reply when someone is unauthorized
@@ -944,6 +950,7 @@ client.on('message', message => {
 		 *      !setrole <role> <user>
 		 #########################################*/
 		if (message.content.startsWith('!setrole ')) {
+			const requiredRole = 'admin';
 			if (message.author.tag == 'meastoso#3957' || message.author.tag == 'kisada#8580') { // need this for testing
 				const allowedRoles = ['superadmin', 'admin', 'voucher', 'user'];
 				setUserRole(message, allowedRoles);
