@@ -429,6 +429,7 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 	const randomPassword = Math.floor(1000 + Math.random() * 9000);
 	const clawsAvgScore = finalMatchObj.clawsAvgScore;
 	const fangsAvgScore = finalMatchObj.fangsAvgScore;
+	const randomMap = getRandomMap();
 	// send DMs for !ready to claws team
 	finalMatchObj.claws.forEach(function(queuePlayerObj) {
 		const userDiscordId = queuePlayerObj.userDiscordId;
@@ -439,7 +440,7 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 		const datacenter = queuePlayerObj.datacenter;
 		if (username != finalMatchObj.matchAdmin.user_id) {
 			// don't send this generic DM to the match admin
-			sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter);
+			sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter, randomMap);
 		}
 	});
 	// Send DMs for fangs
@@ -450,7 +451,7 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 		const role = getRoleFromQueryPlayerObj(queuePlayerObj);
 		const teamName = 'Fangs';
 		const datacenter = queuePlayerObj.datacenter;
-		sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter);
+		sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter, randomMap);
 	});
 	// Send DMs for spectators
 	finalMatchObj.specs.forEach(function(queuePlayerObj) {
@@ -460,16 +461,16 @@ function sendMatchDetailsDM(finalMatchObj, discordClient) {
 		const role = 'Spectator';
 		const teamName = 'Spectator';
 		const datacenter = queuePlayerObj.datacenter;
-		sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter);
+		sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter, randomMap);
 	});
 	// send match admin DM
-	sendMatchAdminNotification(finalMatchObj, randomMatchNumber, randomPassword, discordClient);
+	sendMatchAdminNotification(finalMatchObj, randomMatchNumber, randomPassword, discordClient, randomMap);
 }
 
-function sendMatchAdminNotification(finalMatchObj, randomMatchNumber, randomPassword, discordClient) {
+function sendMatchAdminNotification(finalMatchObj, randomMatchNumber, randomPassword, discordClient, randomMap) {
 	let mt = 'Hello ' + finalMatchObj.matchAdmin.user_id + ', your match is ready!';
 	mt = mt + ' You have been selected as the match-admin and must create the party in party finder!'
-	mt = mt + ' Please create ' + finalMatchObj.matchAdmin.datacenter + ' cross-world custom match party "KIHL #' + randomMatchNumber + '"';
+	mt = mt + ' Please create ' + finalMatchObj.matchAdmin.datacenter + ' cross-world Custom Match - ' + randomMap + ' PF "KIHL #' + randomMatchNumber + '"';
 	mt = mt + ' with password "' + randomPassword + '" as Team: ' + 'Claws' + '.\n';
 	mt = mt + 'Claws Rating: ' + finalMatchObj.clawsAvgScore + '\n';
 	mt = mt + 'Fangs Rating: ' + finalMatchObj.fangsAvgScore + '\n';
@@ -513,10 +514,10 @@ function sendMatchAdminNotification(finalMatchObj, randomMatchNumber, randomPass
 		});
 }
 
-function sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter) {
+function sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, randomPassword, clawsAvgScore, fangsAvgScore, discordClient, teamName, datacenter, randomMap) {
 	let mt = 'Hello ' + username + ', your match is ready!';
 	mt = mt + ' Please join ' + datacenter + ' cross-world party finder "KIHL #' + randomMatchNumber + '"';
-	mt = mt + ' with password "' + randomPassword + '" as Team: ' + teamName + '.\n';
+	mt = mt + ' with password "' + randomPassword + '" as Team: ' + teamName + ' with Map: ' + randomMap + '.\n';
 	mt = mt + 'Claws Rating: ' + clawsAvgScore + '\n';
 	mt = mt + 'Fangs Rating: ' + fangsAvgScore;
 	discordClient.fetchUser(userDiscordId)
@@ -532,6 +533,22 @@ function sendMatchReadyDM(userDiscordId, username, role, randomMatchNumber, rand
 		.catch((err) => {
 			logger.log("ERROR", "Caught exception fetching user to send match DM:", err);
 		});
+}
+
+// returns either "Lichenweed" or "Feasting Grounds"
+function getRandomMap() {
+	const mapMap = {
+			'0': 'Feasting Grounds',
+			'1': 'Lichenweed'
+	};
+	const rand4DigitNum = Math.floor(1000 + Math.random() * 9000);
+	console.log('picking map randomly, rand4DigitNum is: ' + rand4DigitNum);
+	if (rand4DigitNum < 5000) {
+		return mapMap['0'];
+	}
+	else {
+		return mapMap['1'];
+	}
 }
 
 function getRoleFromQueryPlayerObj(queryPlayerObj) {
@@ -1212,6 +1229,16 @@ const clearMatchesArr = function() {
 	activeMatches = [];
 }
 
+const isMessageInQueueChannel = function(message) {
+	const datacenter = getDatacenterFromDiscordChannel(message.channel.name);
+	if(datacenter != undefined && datacenter != null) {
+		return true;
+	}
+	else {
+		message.reply('please use this command in one of the queue channels');
+	}
+}
+
 module.exports = {
 		addPlayerToQueue: addPlayerToQueue,
 		checkForMatch: checkForMatch,
@@ -1236,5 +1263,6 @@ module.exports = {
 		getSpecQueues: getSpecQueues,
 		isUserInSpecQueue: isUserInSpecQueue,
 		clearRCMQ: clearRCMQ,
-		clearMatchesArr: clearMatchesArr
+		clearMatchesArr: clearMatchesArr,
+		isMessageInQueueChannel: isMessageInQueueChannel
 }

@@ -94,6 +94,12 @@ Deployed Updated version of the bot, changelog here:
  *  	- FIXED: Players could join spectator queue and regular queue at same time
  *  	- UPDATED: !showqueue has now become !showq
  *  	- NOTICE: ALL DATA HAS BEEN WIPED FROM DATABASE. ALL ADMINS, VOUCHERS AND USERS MUST BE RE-VOUCHED AND SETROLE
+ *  
+Deployed Updated version of the bot, changelog here:
+ *  Change Log deployed 10/10/2017 @ 12:10 PM EST
+ *  	- FIXED: Added random map identifier (Feasting Grounds -or- Lichenween) to match details
+ *  	- FIXED: Bug where users would receive the wrong error message from the bot when using !join or !joinspec in private channel
+ *  			NOTE: Now when users use !join or !joinspec outside of the queueing channels they are informed they need to use queueing channels
  */
 
 // Helper function to reply when someone is unauthorized
@@ -251,7 +257,7 @@ client.on('message', message => {
 		/*#########################################
 		 *      !join <h|t|m|r>
 		 #########################################*/
-		if (message.content.startsWith('!join ') && commandHelper.isNotDM(message)) {
+		if (message.content.startsWith('!join ')) {
 			try {
 				const authorTag = message.author.tag;
 				const args = message.content.split('!join ')[1]; // should be just 1 letter
@@ -459,7 +465,7 @@ client.on('message', message => {
 		 #########################################*/
 		if (message.content.startsWith('!joinspec') && commandHelper.isNotDM(message)) {			
 			const requiredRole = 'user';
-			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+			if (userMembership.isAuthorized(message.author.tag, requiredRole) && queueManager.isMessageInQueueChannel(message)) {
 				if (queueManager.isUserInSpecQueue(message.author.tag, message.channel.name)) {
 					message.reply('user ' + message.author.tag + ' is already in the spectator queue for this datacenter');
 				}

@@ -17,7 +17,7 @@ const replyUnauthorized = function(message, requiredRole) {
 // called from !join and !testjoin
 const joinCommand = function(message, authorTag, userDiscordId, classArg, discordClient) {
 	const requiredRole = 'user';
-	if (userMembership.isAuthorized(authorTag, requiredRole)) {
+	if (userMembership.isAuthorized(authorTag, requiredRole) && queueManager.isMessageInQueueChannel(message)) {
 		if (queueManager.isUserInGameUnreported(authorTag)) {
 			message.reply('user ' + authorTag + ' cannot join another game until the previous game is reported.');
 		}
