@@ -26,7 +26,7 @@ client.on('ready', () => {
  * 		- !move <user> <pos>
  * 		- (done) !remove <user>
  * 		- (done) !clear
- * 		- !timeout <user> <min>
+ * 		- (done) !timeout <user> <min>
  * 
  * 			** ALL USER COMMANDS HERE: **
  * 		- (done) !showqueue
@@ -38,13 +38,18 @@ client.on('ready', () => {
  * 		- (done) !stats
  * 
  * 	TODO:
- * 		- add timeout to !readycheck
- * 		- add timeout to !win/lose
- * 		- remove players from queue who miss readycheck (when restoring in queue, may need to know which other queues they were in)
+ * 		- (done) add timeout to !readycheck
+ * 		- (done) lock down queue when a game is in RCMQ
+ * 		- (done) trigger checkMatch() when !readycheck fails
+ * 		- (done) add timeout to !win/lose
+ * 		- (done) remove players from queue who miss readycheck (when restoring in queue, may need to know which other queues they were in)
  * 		- review all error messages, format them, ensure they are useful for debugging, add extra messages we might need
- * 		- pick the match-admin and send different message
+ * 		- (done) pick the match-admin and send different message
  * 		- (done) for joinspec validate user isn't already queued for spec in that datacenter already to avoid duplicates
  * 		- (done) remove user from spec queue if called from leave/remove command
+ * 		- (done) add datacenter to the messages about the match to users
+ * 		- (done) provide a confirmation response for !ready and !joinspec
+ * 		- (done) add hidden command to clear rcmq and matches array
  * 
  * 
  * Change Log deployed 10/7/2017 @ 2:00 PM EST:
@@ -66,8 +71,23 @@ client.on('ready', () => {
  * 		- NEW: added !joinspec command to join as a spectator
  * 				NOTE: Spectator queue is affected by !leave and !remove as well as match-starting events
  * 
- *  * Change Log deployed xxxx PM EST
+ *  Change Log deployed 10/8/2017 @ 2:00 AM EST
  * 		- NEW: added admin command !timeout <mins> <user>
+ * 		- FIXED: Spectator messages sent to command user (previously hardcoded to meastoso)
+ * 		- NEW: Added match-admin logic
+ * 				INFO: user with highest role is selected as match-admin and sent a different message to create match in PF
+ * 
+ Deployed Updated version of the bot, changelog here:
+ *  Change Log deployed 10/8/2017 @ x:00 PM EST
+ *  	- NEW: Added expiration logic for !ready check
+ *  			NOTE: After 1 minute, any players who did not !ready are removed from all queues and timed-out for 1 minute (amount subject to change)
+ *  			NOTE: When a ready check fails, users are sent a PM from bot describing the outcome
+ *  	- NEW: Added expiration logic for !win/!lose match reporting
+ *  			NOTE: 5 minutes after the first person reports !win/!lose, the match will close if 5/8 is not met but no conflicting reports
+ *  			NOTE: Once the match closes all players who did not report !win/!lose will be able to queue again
+ *  	- FIXED: Added the name of the datacenter in readycheck and matchdetails PMs
+ *  	- FIXED: Added a confirmation response for !ready and !joinspec
+ *  	- FIXED: !showqueue now returns "NONE! Readying match..." when the queue is filled and this command is run
  */
 
 // Helper function to reply when someone is unauthorized
@@ -416,9 +436,9 @@ client.on('message', message => {
 			}
 		}
 		/*#########################################
-		 *      !showqueue
+		 *      !showq
 		 #########################################*/
-		if (message.content.startsWith('!showqueue') && commandHelper.isNotDM(message)) {			
+		if (message.content.startsWith('!showq') && commandHelper.isNotDM(message)) {			
 			const requiredRole = 'user';
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				message.reply(queueManager.getQueueFriendly(message.channel.name));
@@ -436,6 +456,9 @@ client.on('message', message => {
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				if (queueManager.isUserInSpecQueue(message.author.tag, message.channel.name)) {
 					message.reply('user ' + message.author.tag + ' is already in the spectator queue for this datacenter');
+				}
+				else if (queueManager.isPlayerInQueue(message.author.tag, message.channel.name)) {
+					message.reply('user ' + message.author.tag + ' already exists in the queue, please !leave first before joining again');
 				}
 				else {
 					if (!queueManager.joinSpectator(message, message.author.tag, message.author.id, client)) {
@@ -894,7 +917,8 @@ client.on('message', message => {
 								username = mentionedUsername;
 							}
 							// now do logic with the arguments
-							queueManager.timeoutUser(username, timeoutMinutes);
+							//queueManager.timeoutUser(username, timeoutMinutes);
+							userMembership.timeoutUser(username, timeoutMinutes);
 							
 							
 							
@@ -1077,6 +1101,32 @@ client.on('message', message => {
 			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
 				//message.reply("matches\n: " + JSON.stringify(queueManager.getMatches()));
 				console.log(queueManager.getMatches());
+			}
+			else {
+				console.log('not authorized');
+			}
+		}
+		/*#########################################
+		 *      !clearrcmq HIDDEN COMMAND SUPERADMIN
+		 #########################################*/
+		if (message.content.startsWith('!clearrcmq')) {
+			const requiredRole = 'superadmin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				queueManager.clearRCMQ();
+				message.reply('superadmin ' + message.author.tag + ' cleared the ready-check-manager-queue');
+			}
+			else {
+				console.log('not authorized');
+			}
+		}
+		/*#########################################
+		 *      !clearmatches HIDDEN COMMAND SUPERADMIN
+		 #########################################*/
+		if (message.content.startsWith('!clearmatches')) {
+			const requiredRole = 'superadmin';
+			if (userMembership.isAuthorized(message.author.tag, requiredRole)) {
+				queueManager.clearMatchesArr();
+				message.reply('superadmin ' + message.author.tag + ' cleared all active matches');
 			}
 			else {
 				console.log('not authorized');

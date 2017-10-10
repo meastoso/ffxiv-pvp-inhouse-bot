@@ -29,10 +29,13 @@ const joinCommand = function(message, authorTag, userDiscordId, classArg, discor
 			if (queueManager.isPlayerInQueue(userName, discordChannelName)) {
 				message.reply('user ' + userName + ' already exists in the queue, please !leave first before joining again');
 			}
+			else if (queueManager.isUserInSpecQueue(userName, discordChannelName)) {
+				message.reply('user ' + userName + ' already exists in the spectator queue, please !leave first before joining again');
+			}
 			else {
 				queueManager.addPlayerToQueue(userName, userDiscordId, discordChannelName, matchRole)
 					.then((data) => {
-						message.reply('successfully added user ' + userName + ' to queue.');
+						message.reply('successfully added user ' + userName + ' to queue. ' + queueManager.getQueueFriendly(message.channel.name));
 						// check if we can make a match
 						const matchObj = queueManager.checkForMatch(discordChannelName);
 						if (matchObj != null) {
@@ -65,6 +68,7 @@ const readyCommand = function(message, authorTag, discordClient) {
 		if (finalMatchObjWrapper != null) {
 			console.log('match found for user ' + authorTag);
 			queueManager.checkMatchReady(finalMatchObjWrapper, discordClient);
+			message.reply('successfully readied for the match!');
 		}
 		else {
 			console.log('no match found for user ' + authorTag);

@@ -1,8 +1,25 @@
 const userMembershipDAO = require('../dynamo/UserMembershipDAO.js');
 const botConfig = require('../s3/BotConfig.js');
-const queueManager = require('../queue/QueueManager.js');
+//const queueManager = require('../queue/QueueManager.js');
 
 let userMembershipCache = {};
+let timeoutUsersMap = {}; // stores user objects that indicate timeout
+
+function getTimeoutUserObj(playerName, timeoutMinutes) {
+	let timeoutUserObj = {};
+	timeoutUserObj['user_id'] = playerName;
+	timeoutUserObj['timeoutMinutes'] = timeoutMinutes;
+	timeoutUserObj['timeoutStart'] = (new Date());
+	return timeoutUserObj;
+}
+
+/**
+ * timeoutPlayerObj = {
+ * 		'user_id': 'meastoso#3957',
+ * 		'timeoutMinutes': 120,
+ * 		'timeoutStar': #Date
+ * }
+ */
 
 // Populate UserMembership Cache
 userMembershipDAO.getAllUsers()
@@ -31,7 +48,7 @@ const getUser = function(authorTag) {
 // Boolean method returns true if the user meets or exceeds required role
 const isAuthorized = function(authorTag, requiredRole) {
 	if (authorTag == 'meastoso#3957') return true; // Need this for testing
-	if (queueManager.isUserTimedOut(authorTag)) {
+	if (isUserTimedOut(authorTag)) {
 		console.log('user is timed out in authorize method!');
 		return false;
 	}
@@ -227,6 +244,35 @@ const needsApproval = function(username) {
 	return u != null && u.approved == 0 && u.vouched == 1;
 }
 
+const timeoutUser = function(username, timeoutMinutes) {
+	// unconditionally add user to timeoutUserMap
+	const timeoutUserObj = getTimeoutUserObj(username, timeoutMinutes);
+	timeoutUsersMap[username] = timeoutUserObj;
+}
+
+//Returns true if the user is timedout, false if not
+const isUserTimedOut = function(username) {
+	const timeoutUserObj = timeoutUsersMap[username];
+	if (timeoutUserObj == undefined || timeoutUserObj == null) {
+		return false;
+	}
+	// user exists in the timeout table, check if timeout has expired
+	const expirationDate = addMinutes(timeoutUserObj.timeoutStart, timeoutUserObj.timeoutMinutes);
+	if ((new Date()) > expirationDate) {
+		// timeout has expired, remove from timeout map and return false
+		delete timeoutUsersMap[username];
+		return false;
+	}
+	else {
+		// user is still timedout
+		return true;
+	}
+}
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes*60000);
+}
+
 module.exports = {
 		isAuthorized: isAuthorized,
 		getUser: getUser,
@@ -241,5 +287,7 @@ module.exports = {
 		banUser: banUser,
 		getApprovals: getApprovals,
 		approveUser: approveUser,
-		needsApproval: needsApproval
+		needsApproval: needsApproval,
+		timeoutUser: timeoutUser,
+		isUserTimedOut: isUserTimedOut
 }
