@@ -8,13 +8,24 @@ const logger = require('./logging/logger.js');
 const commandHelper = require('./util/CommandHelper.js');
 const queueManager = require('./queue/QueueManager.js');
 
-const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
-//const botAppID = 'MzY2MDkyNjY0ODQxNjk5MzMw.DLn2LQ.udWvmeDU8YvEVt-JC7uLmW1wIs8'; // THIS IS DEV BOT
+//const botAppID = 'MzU3OTg2ODU2MjM3MDA2ODU4.DJyB2Q.7TqQN5W7Y1vEr5kp-_hXpAIUF2g';
+const botAppID = 'MzY2MDkyNjY0ODQxNjk5MzMw.DLn2LQ.udWvmeDU8YvEVt-JC7uLmW1wIs8'; // THIS IS DEV BOT
 
 const availableRoles = ['superadmin', 'admin', 'voucher', 'user'];
 
 client.on('ready', () => {
   console.log('I am ready!');
+});
+
+/**
+ * KIC Website setup below here (just static content)
+ */
+var express = require('express');
+var app = express();
+app.use(express.static('website-content'))
+var port = process.env.PORT || 3000;
+var server = app.listen(port, function () {
+    console.log('Server running at http://127.0.0.1:' + port + '/');
 });
 
 /**
